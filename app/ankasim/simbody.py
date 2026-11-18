@@ -112,6 +112,15 @@ class _Halt(Exception):
     """He is going to sleep: whatever he was doing stops at once."""
 
 
+def _ktrace(kind, **data):
+    """Writes one line to Anka's thought log (anka/trace.py) - only for measuring; never raises."""
+    try:
+        from anka.trace import trace
+        trace(kind, **data)
+    except Exception:
+        pass
+
+
 def _wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
@@ -200,7 +209,7 @@ class SimBody:
         self._kick_stop = 0.05               # m: the kick approach stops this far before the spot (the legs go on a moment); it learns
         self._kick_side_stop = 0.04          # m: the same for stepping sideways
         self._kick_turn_stop = 0.2           # rad: and for turning (about 11°)
-        self._side_works = True              # 2026-11-12: set to False when a sideways step doesn't move him (see the kick)
+        self._side_works = self.KICK_SIDE_STEPS   # 2026-11-12: set to False when a sideways step doesn't move him (see the kick)
         self.kicks = []                  # every kick: the skill, the robot's answer, how far his eyes saw the ball move
         self.living = L.Living(self, on="--no-living" not in sys.argv).start()   # what his body does by itself between thoughts
         print(f"[SimBody] the moves this body has besides walking: {', '.join(self.link.skills()) or '(none reported)'}")
@@ -649,7 +658,7 @@ class SimBody:
                 time.sleep(0.03)
         f = self.link.frame()
         if f is None:
-            f = np.full((640, 360, 3), 40, np.uint8)
+            f = np.full((P._CAM.PICTURE_H, P._CAM.PICTURE_W, 3), 40, np.uint8)
             if cv2 is not None:
                 cv2.putText(f, "no camera picture", (60, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1, cv2.LINE_AA)
         return f
@@ -1471,13 +1480,44 @@ class SimBody:
         self._sleep(0.8)
         return f"you made your '{tag}' sound ({SOUNDS[tag]})" + ("" if played or muted or linux else " – but no sound came out"), True
 
+    KICK_LOG = True                  # 2026-11-16: write every kick approach (what the body saw and did) to the thought log
+    KICK_NO_SPIN = True              # 2026-11-16: while stepping up, wait for a NEW sighting (before: a busy loop that
+                                     # used the same sighting 40 000+ times per step and hogged the computer)
+    KICK_FIND = True                 # 2026-11-16: ball not in view at his feet -> start from where it IS (eyes / map):
+                                     # close but to the side or behind -> the body turns to face it first; else he is told where
     KICK_X, KICK_Y = 0.09, 0.042     # where Pollen's kick wants the ball: 9 cm ahead, 4.2 cm to the side of the foot
     KICK_OK_X, KICK_OK_Y = 0.035, 0.03   # close enough to that spot (in cm: 3.5 ahead/behind, 3 to the side)
     KICK_WALK_BACK = -0.25           # m/s backing off straight (slower doesn't step - see below)
+    KICK_BACK_CAL = True             # 2026-11-17: back off at the speed turntest.py measured for this duck (BACK_SPEED, 0.4):
+                                     # in 3D -0.25 moved him 0.1 cm in 6 s, while "walk back" at 0.4 works (20 cm -> 23 cm)
+    KICK_BACK_FIX = True             # 2026-11-17: backing off because the ball is too close goes on until the ball is (almost)
+                                     # at the kick spot - not the stop margin learned for walking FORWARD (with it, a 5 cm
+                                     # gap and an 8 cm margin meant "done" before moving: runs 11-17, "back 0.1 cm" ×5);
+                                     # and two backing phases in a row that move < 1 cm end the approach
+    KICK_BLIND_WIDE = 0.6            # 2026-11-17: m - while the ball is out of the picture (turning) the body may go on by
+                                     # counting its steps if it last saw the ball this close (0 = only KICK_BLIND_FROM, 0.35)
+    KICK_SIDE_STEPS = False          # 2026-11-17: in 3D side steps never move him (0.2-0.6 cm, runs 11-16) - start without
+                                     # them: turn, back off and walk in straight instead (True = try side steps first, as before)
+    KICK_TURN_AWAY_MAX = 0.20        # 2026-11-18: m - "turn away" only when the ball is this close past the kick spot (ball
+                                     # within ~30 cm). Runs 11-17: it fired with the ball 65-100 cm away, where just walking
+                                     # towards it is right - and lost the ball there (4 of 6 losses). 0 = anywhere, as before
+    KICK_LOOK_AHEAD_AFTER = True     # 2026-11-18: after a kick, if the ball is gone from the picture looking down, also look
+                                     # straight ahead - so he (and the measuring) knows whether it rolled away
+    KICK_SCAN_AFTER = True           # 2026-11-18: after a kick, ball not at his feet nor straight ahead -> glance left and right
+                                     # (head only) - run 11-18 10:01: a good kick, but he was told "at your feet or rolled away"
+                                     # and believed it was still at his feet
+    KICK_ONLY_CLOSE = 0.20           # 2026-11-18: m - if the approach couldn't line up and the ball is further than this from his
+                                     # feet, the body does NOT kick (run 11-18 10:01: two kicks at a ball 61-65 cm away). 0 = always kick
     KICK_SIDE = 0.20                 # m/s stepping sideways (the walking policy's most)
     KICK_BLIND_FROM = 0.35           # m: seen this close, the body can do the last cm by counting its steps (see below)
     KICK_TURN_ROOM = 0.14            # m: when side steps don't work, back off until the ball is this far past the kick spot,
                                      # so there is room to turn towards it and walk in straight (2026-11-12)
+
+    def _kick_back_speed(self):
+        """How fast the body backs off during the kick approach (m/s, negative)."""
+        if self.KICK_BACK_CAL and BACK_SPEED > 0:
+            return -BACK_SPEED
+        return self.KICK_WALK_BACK
 
     def _fresh_ball(self, after, wait=1.5):
         """A sighting of the ball made by his eyes AFTER a given moment (not an old one from before a step)."""
@@ -1496,7 +1536,109 @@ class SimBody:
         cx, cy = (cam["pos"][0], cam["pos"][1]) if cam.get("pos") else (0.03, 0.0)   # the camera sits ahead of his feet
         return cx + v["d"] * math.cos(rel), cy + v["d"] * math.sin(rel)
 
+    def _kick_find_ball(self, L):
+        """2026-11-16 (KICK_FIND). He chose to kick, but looking down at his feet he doesn't see the ball. Run 2026-11-16
+        20:04-21:22 (10 kick days, 55 tries): 49 stopped right here, and he only heard "you can't see it" - while his map
+        often knew the ball lay 25 cm to the side or behind him (the camera is 45° wide, the kick looked straight down).
+        Like a footballer, the body now starts from where the ball IS: close (under 80 cm) but not in front -> it turns to
+        face it (part of the kick's motor skill, at most twice); otherwise he is told where his eyes or map say it is.
+        Returns (a fresh sighting, "") to go on with the approach, or (None, words for him)."""
+        turned_at = 0.0
+        for attempt in range(3):
+            v = self._visible.get("ball")
+            if v and time.time() - v["t"] < 2.0 and v["t"] > turned_at:
+                fx, fy = self._ball_from_feet(v)
+                d, rel, src = math.hypot(fx, fy), math.degrees(math.atan2(fy, fx)), "eyes"
+                sight = v
+            else:
+                pos = self.mind.pos_of("ball") if self.mind.pose() is not None else None
+                if pos is None and attempt == 0:
+                    self.link.look_at(*LEVEL)               # never seen it: one look ahead, like before
+                    self._gaze, self._home_point = "straight ahead", LEVEL
+                    self._sleep(0.8)
+                    ahead = self._fresh_ball(time.time() - 0.3, wait=1.0)
+                    L({"step": "look ahead", "seen": ({"d": round(ahead["d"], 3), "deg": round(ahead["b"] + ahead.get("head", 0.0))}
+                                                       if ahead else None)})
+                    if ahead is None:
+                        return None, ("you looked down at your feet to kick, but you can't see the ball there, and not straight "
+                                      "ahead either – you don't know where the ball is yet (look around to find it)")
+                    fx, fy = self._ball_from_feet(ahead)
+                    d, rel, src = math.hypot(fx, fy), math.degrees(math.atan2(fy, fx)), "eyes"
+                elif pos is None:
+                    return None, "you can't see the ball anywhere near your feet, and you don't know where it is (look around)"
+                else:
+                    d, rel = self.mind.from_me(pos)
+                    src = "map"
+            kicked = bool((self.mind.things.get("ball") or {}).get("kicked")) and src == "map"
+            maybe = " (you kicked it since then, so it may have rolled)" if kicked else ""
+            by = "your eyes" if src == "eyes" else "your map"
+            L({"step": "find", "attempt": attempt, "src": src, "d": round(d, 2), "deg": round(rel), "kicked_since": kicked})
+            if d > 0.8:
+                return None, (f"you looked down at your feet to kick, but the ball isn't there – by {by} it is {M.about(d)} "
+                              f"{M.side(rel)}{maybe}, too far to kick from here (walk to it first)")
+            if d < 0.09 and abs(rel) < 60:
+                return None, (f"you looked down at your feet to kick, but you can't see the ball – by {by} it is right at your "
+                              f"feet, closer than your camera can see even looking down{maybe or ' (or it rolled away)'}")
+            if abs(rel) <= 15:
+                if attempt > 0 and src == "eyes" and 0.09 <= d <= 0.7:
+                    return sight, ""                    # his eyes caught it again after turning (2026-11-17)
+                if attempt > 0:                         # turned to face it, still not in view
+                    break
+                return None, (f"you looked down at your feet to kick, but you can't see the ball – by {by} it should be "
+                              f"{M.about(d)} {M.side(rel)}{maybe}; it may have rolled, or your map is a little off (look around)")
+            if attempt == 2:
+                break
+            res, ok = self._turn(rel)
+            L({"step": "turn to the ball", "asked_deg": round(rel), "result": res[:90]})
+            if not ok and self._check_fall():
+                return None, f"you tried to turn towards the ball to kick it, but {res}"
+            self._kick_pre += f"the ball was {M.about(d)} {M.side(rel)}, so you {res} to face it; then "
+            turned_at = time.time()
+            self.link.look_at(*LOOKS["down"])
+            self._gaze, self._home_point = "down", LOOKS["down"]
+            self._sleep(0.8)
+            v2 = self._fresh_ball(time.time() - 0.3, wait=1.0)
+            L({"step": "look down after turning", "seen": ({"d": round(v2["d"], 3), "deg": round(v2["b"] + v2.get("head", 0.0))}
+                                                            if v2 else None)})
+            if v2 is not None:
+                return v2, ""
+        pos = self.mind.pos_of("ball")
+        where = f" – by your map it should be {M.about(self.mind.from_me(pos)[0])} {M.side(self.mind.from_me(pos)[1])}" if pos else ""
+        return None, f"you turned towards the ball but still can't see it at your feet{where}; it may have rolled (look around)"
+
     def _kick_approach(self, side):
+        """2026-11-16: runs the approach below and writes to the thought log (kind "kick_approach") what the body saw and
+        did - also when it fails early, so a failed kick can be measured afterwards. Only facts; it changes nothing he does."""
+        self._kick_log = []
+        self._kick_pre = ""
+        start = {}
+        if self.KICK_LOG:
+            try:
+                pos = self.mind.pos_of("ball")
+                if pos is not None and self.mind.pose() is not None:
+                    bd, brel = self.mind.from_me(pos)
+                    start["map_ball"] = (round(bd, 2), round(brel))            # where his map believed the ball was (m, deg)
+                v = self._visible.get("ball")
+                if v:
+                    start["last_seen"] = {"age_s": round(time.time() - v["t"], 1), "d": round(v["d"], 2),
+                                          "deg": round(v["b"] + v.get("head", 0.0))}
+                start["gaze"] = self._gaze
+            except Exception as error:
+                start["error"] = repr(error)
+        t0 = time.time()
+        try:
+            text, ok = self._kick_approach_inner(side)
+            text = self._kick_pre + text
+        except Exception as error:
+            if self.KICK_LOG:
+                _ktrace("kick_approach", side=side, error=repr(error), start=start, steps=self._kick_log[-80:])
+            raise
+        if self.KICK_LOG:
+            _ktrace("kick_approach", side=side, ok=ok, result=str(text)[:300], seconds=round(time.time() - t0, 1),
+                    start=start, summary=(getattr(self, "kick_approach", None) if ok else None), steps=self._kick_log[-80:])
+        return text, ok
+
+    def _kick_approach_inner(self, side):
         """His body steps up to the ball before a kick - a motor skill of the kick, like a footballer's last steps.
 
         Rewritten 2026-11-11. Before, it used short step pulses, but Pollen's walking policy steps on the spot when a
@@ -1529,7 +1671,7 @@ class SimBody:
 
         def from_steps():
             """Where the ball should be now (forward, left of his feet) from where he last saw it close up, or None."""
-            if mem["w"] is None or time.time() - mem["t"] > 20 or mem["d"] > self.KICK_BLIND_FROM:
+            if mem["w"] is None or time.time() - mem["t"] > 20 or mem["d"] > max(self.KICK_BLIND_FROM, self.KICK_BLIND_WIDE):
                 return None
             x, y, yaw = self._odom()
             dx, dy = mem["w"][0] - x, mem["w"][1] - y
@@ -1548,11 +1690,24 @@ class SimBody:
             if pts:
                 avg = (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
                 remember(avg, d)
+                self._kick_log.append({"step": "look", "seen": len(pts), "pos": (round(avg[0], 3), round(avg[1], 3)),
+                                       "d": round(d, 3), "blind": False})
                 return avg[0], avg[1], False
             est = from_steps()
+            self._kick_log.append({"step": "look", "seen": 0, "pos": (round(est[0], 3), round(est[1], 3)) if est else None,
+                                   "blind": bool(est)})
             return (est[0], est[1], True) if est else None
 
         first = self._fresh_ball(time.time() - 0.3, wait=1.0)
+        L = self._kick_log.append
+        r3 = lambda p: (round(p[0], 3), round(p[1], 3)) if p else None
+        L({"step": "first look down", "seen": ({"d": round(first["d"], 3), "deg": round(first["b"] + first.get("head", 0.0)),
+                                               "feet": r3(self._ball_from_feet(first))} if first else None),
+           "from_steps": r3(from_steps())})
+        if first is None and self.KICK_FIND:
+            first, words = self._kick_find_ball(L)
+            if first is None:
+                return words, False
         blind = False
         if first is None:
             # 2026-11-12: he often tried to kick from too far away and only heard "it isn't right in front of you".
@@ -1561,6 +1716,8 @@ class SimBody:
             self._gaze, self._home_point = "straight ahead", LEVEL
             self._sleep(0.8)
             ahead = self._fresh_ball(time.time() - 0.3, wait=1.0)
+            L({"step": "look ahead", "seen": ({"d": round(ahead["d"], 3), "deg": round(ahead["b"] + ahead.get("head", 0.0))}
+                                               if ahead else None)})
             if ahead is not None:
                 return (f"you looked down at your feet to kick, but the ball isn't there – looking ahead you see it about "
                         f"{_metres(ahead['d'])} away {_side(ahead['b'] + ahead.get('head', 0.0))}, too far to kick from here"), False
@@ -1568,6 +1725,11 @@ class SimBody:
                     "it isn't right in front of you, and you don't see it straight ahead either"), False
         if first["d"] > 0.7:
             return f"the ball is about {_metres(first['d'])} away – too far to kick from here (walk up to it first)", False
+        if self.KICK_BLIND_WIDE:
+            # 2026-11-17: the first sighting also counts for the step estimate - so if the next look misses the ball (at the
+            # edge of the 45° picture, the gait sways) the body still knows where it was instead of "lost sight of it"
+            remember(self._ball_from_feet(first), first["d"])
+        stuck_back = 0
         while time.time() - t0 < 40 and len(phases) < 20:
             seen = look()
             if seen is None:
@@ -1582,19 +1744,23 @@ class SimBody:
                 break
             # one move at a time, from standing: back off / step sideways / turn / walk - then stop before the spot
             if ex < -self.KICK_OK_X:
-                kind, cmd = "back", (self.KICK_WALK_BACK, 0.0, 0.0)
-                done = lambda ex, ey, ang: ex >= -self._kick_stop
+                kind, cmd = "back", (self._kick_back_speed(), 0.0, 0.0)
+                if self.KICK_BACK_FIX:
+                    done = lambda ex, ey, ang: ex >= -0.01      # the legs slide back the last cm by themselves
+                else:
+                    done = lambda ex, ey, ang: ex >= -self._kick_stop
             elif ex < 0.12 and abs(ey) > self.KICK_OK_Y and not self._side_works:
                 # side steps don't move him (runs 2026-11-11/12: a 10 cm side gap stayed after 25 s) - so do it like a
                 # footballer who is off to the side: step back, turn towards the ball, walk in straight
-                kind, cmd = "back off to turn", (self.KICK_WALK_BACK, 0.0, 0.0)
+                kind, cmd = "back off to turn", (self._kick_back_speed(), 0.0, 0.0)
                 done = lambda ex, ey, ang: ex >= self.KICK_TURN_ROOM
             elif ex < 0.12 and abs(ey) > self.KICK_OK_Y:
                 kind, cmd = "side", (0.0, math.copysign(self.KICK_SIDE, ey), 0.0)
                 sgn = math.copysign(1, ey)
                 done = lambda ex, ey, ang, sgn=sgn: ey * sgn <= self._kick_side_stop
             elif (ex >= 0.12 and abs(ey) > self.KICK_OK_Y and not self._side_works
-                  and abs(ang) <= max(math.radians(10), self._kick_turn_stop)):
+                  and abs(ang) <= max(math.radians(10), self._kick_turn_stop)
+                  and (not self.KICK_TURN_AWAY_MAX or ex < self.KICK_TURN_AWAY_MAX)):
                 # off to the side by a few cm, but at too small an angle to turn in (a turn carries on ~10°): turn AWAY a
                 # little first, so the turn back in is big enough to stop right on the line
                 kind, cmd = "turn away", (TURN_VX, 0.0, -math.copysign(TURN_MIN, ey))
@@ -1608,29 +1774,58 @@ class SimBody:
                 kind, cmd = "walk", (WALK_SPEED, 0.0, 0.0)
                 done = lambda ex, ey, ang: ex <= self._kick_stop
             phases.append(kind)
+            L({"step": "phase", "kind": kind, "ball": r3(f), "err_cm": (round(ex * 100, 1), round(ey * 100, 1)),
+               "ang_deg": round(math.degrees(ang)), "stop_margin": round(self._kick_stop, 3)})
+            po = self._odom()
+            n_seen = n_blind = 0
+            why = "6 s timeout"
             self.link.move(*cmd)                        # keeps going until stopped (no short pulses: they step on the spot)
             end, est, start = time.time() + 6.0, f, time.time()
+            seen_t = time.time() - 0.05                 # (KICK_NO_SPIN: the time of the last sighting used)
             while time.time() < end:
                 if kind == "side" and time.time() - start > 3.0 and abs(est[1] - f[1]) < 0.015:
                     self._side_works = False            # 3 s of side steps and the ball hasn't moved sideways: they don't work
+                    why = "side steps don't move him"
                     break
-                v = self._fresh_ball(time.time() - 0.05, wait=0.3)
+                v = self._fresh_ball(seen_t if self.KICK_NO_SPIN else time.time() - 0.05, wait=0.3)
                 if v is not None:
+                    n_seen += 1
                     bx, by = self._ball_from_feet(v)
-                    est = (est[0] + 0.5 * (bx - est[0]), est[1] + 0.5 * (by - est[1]))  # smoothed: the gait sways
+                    if self.KICK_NO_SPIN:
+                        # each new sighting is used once. (The old busy loop applied the same sighting thousands of times,
+                        # so in practice the estimate always WAS the latest sighting - kept like that, so nothing else changes.)
+                        seen_t = v["t"]
+                        est = (bx, by)
+                    else:
+                        est = (est[0] + 0.5 * (bx - est[0]), est[1] + 0.5 * (by - est[1]))  # smoothed: the gait sways
                     remember(est, v["d"])
                 else:                                   # out of sight: too close? then go on by counting steps
                     est = from_steps()
                     if est is None:
+                        why = "lost the ball (not seen, no step estimate)"
                         break
+                    n_blind += 1
                 if done(est[0] - self.KICK_X, est[1] - fy, math.atan2(est[1] - fy, max(est[0], 0.05))):
+                    why = "reached its stop point"
                     break
+            moving_s = time.time() - start
+            p_stop = self._odom()
             self.link.stop()
             self._sleep(0.7)                            # the legs go on a moment - let them settle before looking
+            p_end = self._odom()
+            L({"step": "phase end", "kind": kind, "why": why, "seconds": round(moving_s, 1), "sightings": n_seen,
+               "blind_estimates": n_blind, "est": r3(est),
+               "moved_cm": round(math.hypot(p_stop[0] - po[0], p_stop[1] - po[1]) * 100, 1),
+               "carried_on_cm": round(math.hypot(p_end[0] - p_stop[0], p_end[1] - p_stop[1]) * 100, 1)})
+            if self.KICK_BACK_FIX and kind in ("back", "back off to turn"):
+                stuck_back = stuck_back + 1 if math.hypot(p_end[0] - po[0], p_end[1] - po[1]) < 0.01 else 0
+                if stuck_back >= 2:
+                    L({"step": "gave up: backing off doesn't move him"})
+                    break
             after = look()
             if after is not None and not after[2]:      # learn how far the legs carry on after "stop" (only from sight)
                 ex2, ey2 = after[0] - self.KICK_X, after[1] - fy
-                if kind in ("walk", "back"):
+                if kind == "walk" or (kind == "back" and not self.KICK_BACK_FIX):
                     over = (-ex2 if kind == "walk" else ex2) > self.KICK_OK_X
                     short = (ex2 if kind == "walk" else -ex2) > self.KICK_OK_X
                     if over:
@@ -1684,6 +1879,11 @@ class SimBody:
         approach, ok = self._kick_approach(side)
         if not ok:
             return approach, False
+        ka, lu = getattr(self, "kick_approach", None) or {}, getattr(self, "kick_lineup", None)
+        if self.KICK_ONLY_CLOSE and not ka.get("lined_up") and lu and math.hypot(*lu) > self.KICK_ONLY_CLOSE:
+            _ktrace("kick_result", side=side, kicked=False, ball_from_feet_m=round(math.hypot(*lu), 2))
+            return (f"{approach} – the ball is still about {_metres(math.hypot(*lu))} from your feet, too far for your foot, "
+                    "so your body didn't kick (walk up to it first)"), False
         before = ""
         pos = self.mind.pos_of("ball")
         if pos is not None and self.mind.pose() is not None:
@@ -1721,6 +1921,36 @@ class SimBody:
                             f"{where} – it didn't move"), False
                 return f"{approach}, then kicked with your {side} foot{before} – your eyes see the ball now {where} (it moved about {_metres(moved)})", True
             return f"{approach}, then kicked with your {side} foot{before} – your eyes see the ball now {where}", True
+        if self.KICK_LOOK_AHEAD_AFTER:
+            self.link.look_at(*LEVEL)             # 2026-11-18: not at his feet - look ahead too: did it roll away?
+            self._gaze, self._home_point = "straight ahead", LEVEL
+            self._sleep(0.8)
+            seen2 = self._fresh_ball(time.time() - 0.3, wait=1.0)
+            if seen2 is not None:
+                self._ball_at = None
+                self.kicks[-1]["seen_ahead_m"] = round(seen2["d"], 2)
+                _ktrace("kick_result", side=side, rolled_to_m=round(seen2["d"], 2), lined_up=bool((getattr(self, "kick_approach", None) or {}).get("lined_up")))
+                return (f"{approach}, then kicked with your {side} foot{before} – the ball is no longer at your feet: looking "
+                        f"ahead you see it about {_metres(seen2['d'])} {_side(seen2['b'] + seen2.get('head', 0.0))} (it rolled away)"), True
+            if self.KICK_SCAN_AFTER:
+                seen3, way = None, None
+                for word in ("left", "right"):     # head only - his body stays where it is
+                    self._look(f"look {word}")
+                    self._sense(force=True)
+                    seen3 = self._fresh_ball(time.time() - 0.3, wait=0.8)
+                    if seen3 is not None:
+                        way = word
+                        break
+                self._look("look straight")
+                if seen3 is not None:
+                    self._ball_at = None
+                    self.kicks[-1]["seen_side_m"] = round(seen3["d"], 2)
+                    _ktrace("kick_result", side=side, rolled_to_m=round(seen3["d"], 2), seen="glancing " + way,
+                            lined_up=bool((getattr(self, "kick_approach", None) or {}).get("lined_up")))
+                    return (f"{approach}, then kicked with your {side} foot{before} – the ball is no longer at your feet or "
+                            f"straight ahead: glancing {way} you see it about {_metres(seen3['d'])} "
+                            f"{_side(seen3['b'] + seen3.get('head', 0.0))} (it rolled away)"), True
+            _ktrace("kick_result", side=side, rolled_to_m=None, lined_up=bool((getattr(self, "kick_approach", None) or {}).get("lined_up")))
         self._ball_at = False                 # nobody knows where it rolled to - he has to look
         if (getattr(self, "kick_approach", None) or {}).get("blind"):
             return (f"{approach}, then kicked with your {side} foot{before} – the ball is not in your camera picture now: "

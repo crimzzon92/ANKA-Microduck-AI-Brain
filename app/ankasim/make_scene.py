@@ -12,6 +12,7 @@ from pathlib import Path
 
 import room_layout as R
 import furniture as F
+import camera_model as CAM
 
 HERE = Path(__file__).resolve().parent
 WALL_RGBA = "0.90 0.88 0.84 1"        # the walls: one plain, warm light colour (red green blue, 0-1)
@@ -42,8 +43,30 @@ def box(name, x1, y1, x2, y2, z0, z1, material):
             f'material="{material}" contype="1" conaffinity="1"/>')
 
 
+def robot_with_camera(robot):
+    """2026-11-18: a copy of Pollen's robot model with the head camera of camera_model.py (the retail duck's: upright,
+    55° tall, about 85° wide), written next to our scene. Pollen's own file is never changed. Returns the file to use."""
+    if not CAM.MODEL_CAMERA_QUAT:
+        return robot
+    import re
+    text = robot.read_text(encoding="utf-8")
+    text = text.replace('meshdir="assets"', f'meshdir="{robot.parent / "assets"}"')
+    text, n = re.subn(r'(<camera name="head_camera" pos="[^"]*") quat="[^"]*"\s*/>',
+                      rf'\1 quat="{CAM.MODEL_CAMERA_QUAT}" fovy="{CAM.FOVY_RENDER:g}"/>', text)
+    if n != 1:
+        print(f"⚠️  couldn't find the head camera in {robot.name} - using Pollen's camera as it is")
+        return robot
+    out = HERE / "scene" / f"{robot.stem}_anka_{CAM.MODEL}_camera.xml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    print(f"📷 head camera: {CAM.MODEL} ({CAM.FOV_H:.0f}° wide × {CAM.FOV_V:.0f}° tall, "
+          f"{'landscape' if CAM.PICTURE_W > CAM.PICTURE_H else 'portrait'})")
+    return out
+
+
 def build(rl_dir, robot_model="allcollisions"):
     robot = (Path(rl_dir).expanduser() / MODEL_SUBDIR / f"robot_{robot_model}.xml").resolve()
+    robot = robot_with_camera(robot)
     W, H, T = R.ROOM_W, R.ROOM_H, 0.10          # room size and wall thickness
     wh = R.WALL_HEIGHT
     out = []

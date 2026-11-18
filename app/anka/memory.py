@@ -13,6 +13,10 @@ from datetime import date, datetime
 
 import numpy as np
 
+from settings import MOOD_MEMORY, MOOD_QUERY, MOOD_MEMORY_BONUS, MOOD_HIT
+from settings import (MEMORY_PERMANENT, MEMORY_PERMANENT_FEEL, FAMILIAR_NEW_MINUTES, ASSOC_SEARCH, ASSOC_QUERY, ASSOC_HIT)
+from settings import (MEMORY_STRENGTH, MEMORY_HALF_DAYS, MEMORY_STRENGTH_BONUS, MEMORY_RECALL_BOOST, MEMORY_OLD_MIN,
+                      MAX_CONVERSATIONS)
 from settings import (PICTURE_MEMORY, PICTURE_DIR, MAX_PICTURES, PICTURE_KEEP_WIDTH, HABITUATION, HABIT_FADE, HABIT_STRENGTH, MEMORY_EARLIER_SLOT, MEMORY_RECENT, MEMORY_REPEAT_PENALTY, POPUPS_FOLLOW_THOUGHT, FEELING_BONUS, FEELING_VECTORS, FEELING_VECTOR_FILE, FOLDER, MAX_DIARY, MAX_FACTS, MEMORIES_TO_MIND, MEMORY_AI, MEMORY_FILE, MOOD_BONUS, NAME, OLD_VECTOR_FILE, ROOMS, ROOM_BONUS, SAVE_EVERY, SEARCH_CONVERSATIONS, SEARCH_DIARY, SHORT_OUTPUT, SIM, VECTOR_FILE)
 from anka.shared import S, state, unsure_words
 
@@ -39,6 +43,7 @@ goals = []          # Anka's own goals: {"text", "since", "t"}
 cleanup_log = []    # everything the tidy-up changed, so it can be undone: {"date", "what", "before", "after"}
 diary = []          # things Anka itself did and experienced: {"date", "time", "text"}
 seen = []           # kinds of things Anka has ever seen
+familiarity = {}    # 2026-11-18: thing or person -> {"first": date, "days": [dates seen, newest last], "times": separate sightings}
 conversations = []  # all conversations: {"date", "time", "human", "duck"}
 self_image = []     # who Anka has become
 lessons = []        # what Anka learned about how it behaves, from looking back on its days
@@ -122,6 +127,20 @@ def load_memory():
     old_facts[:] = data.get("old_facts", [])
     diary[:] = data.get("diary", [])
     seen[:] = data.get("seen", [])
+    familiarity.clear()
+    familiarity.update(data.get("familiarity", {}))
+    # (things and people he knew before familiarity was kept: start from what the diary and the talks say - 2026-11-18)
+    for d in data.get("diary", []):
+        m = re.match(r"I saw an? (.+) for the first time", d.get("text", ""))
+        if m and m.group(1) not in familiarity:
+            familiarity[m.group(1)] = {"first": d["date"], "days": [d["date"]], "times": 1}
+    for c in data.get("conversations", []):
+        who, day = c.get("who"), c.get("date")
+        if who and day:
+            f = familiarity.setdefault(who, {"first": day, "days": [], "times": 0})
+            if day not in f["days"]:
+                f["days"] = sorted(f["days"] + [day])[-60:]
+                f["times"] = f.get("times", 0) + 1
     conversations[:] = data.get("conversations", [])
     self_image[:] = data.get("self", [])
     lessons[:] = data.get("lessons", [])
@@ -162,7 +181,7 @@ def save_now():
                 palace.setdefault(room_of.get(f, "unsorted"), []).append(f)
             text = json.dumps({
                 "self": self_image, "lessons": lessons, "ideas": ideas, "own_said": own_said, "places": places, "facts": palace, "old_facts": old_facts, "diary": diary,
-                "seen": seen, "conversations": conversations, "last_dream": S.last_dream,
+                "seen": seen, "familiarity": familiarity, "conversations": conversations, "last_dream": S.last_dream,
                 "feelings": {k: round(v, 2) for k, v in feelings.items()}, "goals": goals,
                 "cleanup_log": cleanup_log[-300:],
                 "fact_dates": {k: v for k, v in learned_on.items() if k in facts}},
@@ -192,6 +211,140 @@ def saver_loop():
             print(f"💾 Couldn't save ({type(error).__name__}: {error})")
 
 
+def _age_days(entry):
+    try:
+        return max(0, (date.today() - date.fromisoformat(str(entry.get("date"))[:10])).days)
+    except Exception:
+        return 0
+
+
+def start_strength(entry):
+    """How strong a memory is when it is made: 1, more if it moved him (feel 0-1), a surprise, a first time, a picture."""
+    text = entry.get("text") or entry.get("human", "")
+    s = 1.0 + 2.0 * float(entry.get("feel", 0.0) or 0.0)
+    if text.startswith("I was surprised") or "for the first time" in text:
+        s += 0.5
+    if entry.get("picture"):
+        s += 0.5
+    return s
+
+
+def is_permanent(entry):
+    """A memory he keeps forever (MEMORY_PERMANENT): picked at night, a moment that moved him very much, or a first time."""
+    if not MEMORY_PERMANENT:
+        return False
+    text = entry.get("text") or entry.get("human", "")
+    return bool(entry.get("permanent")) or float(entry.get("feel", 0.0) or 0.0) >= MEMORY_PERMANENT_FEEL \
+        or "for the first time" in text
+
+
+def strength(entry):
+    """How strong a memory is now (2026-11-18, MEMORY_STRENGTH). It fades - and a strong memory fades SLOWER (like in
+    us: the day you met someone stays, what the wall looked like goes): it halves every MEMORY_HALF_DAYS × its
+    strength days (an ordinary memory, 1: a week; a big moment, 3: three weeks; one that keeps coming up: longer).
+    (Measured from the day it was made, so no extra date is needed and life mode's moved dates keep working.)"""
+    s = entry.get("strength")
+    s = start_strength(entry) if s is None else s
+    now = s * 0.5 ** (_age_days(entry) / (MEMORY_HALF_DAYS * max(0.5, s)))
+    return max(now, 1.0) if is_permanent(entry) else now      # (a memory kept forever never fades below an ordinary new one)
+
+
+def strengthen(entry):
+    """It came up in his thoughts: a little stronger (once a day)."""
+    today = date.today().isoformat()
+    if entry.get("recalled") == today:
+        return
+    s = entry.get("strength")
+    s = start_strength(entry) if s is None else s
+    entry["strength"] = round(s + MEMORY_RECALL_BOOST * 2 ** (_age_days(entry) / (MEMORY_HALF_DAYS * max(0.5, s))), 3)
+    entry["recalled"] = today
+    save_memory()
+
+
+def trim_weakest(items, max_n, keep_latest):
+    """The memory is full: let go of the WEAKEST lines older than the latest `keep_latest` (MEMORY_STRENGTH), or the
+    oldest (without it). Call with memory_lock held."""
+    if len(items) <= max_n:
+        return
+    if not MEMORY_STRENGTH:
+        del items[:-max_n]
+        return
+    old = [i for i in range(max(0, len(items) - keep_latest)) if not is_permanent(items[i])]
+    gone = set(sorted(old, key=lambda i: strength(items[i]))[:len(items) - max_n])
+    items[:] = [x for i, x in enumerate(items) if i not in gone]
+
+
+def _searchable(items, latest):
+    """The latest `latest` lines, and (MEMORY_STRENGTH) older ones that are still strong enough to come up."""
+    if not MEMORY_STRENGTH or len(items) <= latest:
+        return items[-latest:]
+    older = items[:-latest]
+    return [x for x in older if strength(x) >= MEMORY_OLD_MIN] + items[-latest:]
+
+
+_entry_of = {}         # what the brain is shown -> the diary line / conversation it came from (for strengthen)
+
+
+def note_familiar(name):
+    """He sees (or meets) this thing or person again after a while away (call with memory_lock held, or not - small)."""
+    today = date.today().isoformat()
+    f = familiarity.setdefault(name, {"first": today, "days": [], "times": 0, "first_t": time.time()})
+    f["times"] = f.get("times", 0) + 1
+    if not f["days"] or f["days"][-1] != today:
+        f["days"] = (f["days"] + [today])[-60:]
+    save_memory()
+
+
+def familiar_words(names):
+    """Facts for the brain about how well he knows what is here now (or "" if nothing to say)."""
+    # 2026-11-18 (v2): only what is NEW is named. Run 11-18 11:13: "guitar – very familiar" in every thought kept the
+    # guitar IN his mind (15-18 thoughts a day, vs 11 -> 8 -> 0 without the line) - naming a thing points at it.
+    # v3 (2026-11-18): only what is new RIGHT NOW is named - first seen today, and less than FAMILIAR_NEW_MINUTES ago.
+    # (v2 also named "seen only a few times before" - the sock on day 3 got 20 of 37 thoughts from that.)
+    today = date.today().isoformat()
+    new, known = [], 0
+    for n in names:
+        f = familiarity.get(n)
+        if not f:
+            continue
+        fresh = time.time() - f.get("first_t", 0) < FAMILIAR_NEW_MINUTES * 60
+        if f.get("first") == today and len(f.get("days", [])) <= 1 and fresh:
+            new.append(n)
+        else:
+            known += 1
+    if not new:
+        return ""
+    return ("How well you know what is here (facts): new to you today: " + ", ".join(new)
+            + ("; everything else here you know well" if known else "") + ".\n")
+
+
+def relevant_lessons(situation, n=None, min_sim=None):
+    """2026-11-18 (LESSON_FIX): the lessons that fit this moment (at most LESSONS_SHOWN, closest in meaning first),
+    found like memories - instead of every lesson in every thought."""
+    from settings import LESSONS_SHOWN, LESSON_MIN_SIMILARITY
+    n = LESSONS_SHOWN if n is None else n
+    min_sim = LESSON_MIN_SIMILARITY if min_sim is None else min_sim
+    with memory_lock:
+        ls = list(lessons)
+    if not ls or not situation.strip():
+        return []
+    if not S.memory_ai_ok:
+        return ls[-1:]
+    try:
+        q = question_vector(situation[-1500:])
+        M = np.array(document_vectors(ls))
+    except Exception:
+        return ls[-1:]
+    sim = normalize(M) @ normalize(q)
+    chosen = [ls[i] for i in np.argsort(-sim) if sim[i] >= min_sim][:n]
+    try:
+        from anka.trace import trace
+        trace("lessons_shown", shown=chosen, of=len(ls), similarity=[round(float(x), 3) for x in sim])
+    except Exception:
+        pass
+    return chosen
+
+
 def write_diary(text, feel=None, feeling=None):
     """Adds an entry to Anka's diary (call with memory_lock held). feel = how much it meant (else: right now)."""
     if feel is None and text.startswith(("I decided:", "I gave up on:", "I finished my goal:", "I took a nap")):
@@ -202,7 +355,7 @@ def write_diary(text, feel=None, feeling=None):
         feeling = feeling_now(120)  # (how he feels right now, in his own words)
     if feeling:
         diary[-1]["feeling"] = feeling
-    del diary[:-MAX_DIARY]
+    trim_weakest(diary, MAX_DIARY, SEARCH_DIARY)
     if not (SHORT_OUTPUT and text.startswith("I thought: ")):  # the thought already shows in the 💭 line
         print(f"📔 Diary: {text}")
 
@@ -414,11 +567,19 @@ def all_memories():
         out += [(o["text"], f"until {when(o['until'])}: {o['text']}", "old", 0.0) for o in old_facts]
         out += [(d["text"], f"{when(d['date'])}: {d['text']}" + (f" (it felt: {d['feeling']})" if d.get("feeling") else "")
                  + (" [a picture memory]" if d.get("picture") else ""),
-                 "diary", d.get("feel", 0.0), d.get("feeling"), d["date"], d.get("picture")) for d in diary[-SEARCH_DIARY:]]
+                 "diary", d.get("feel", 0.0), d.get("feeling"), d["date"], d.get("picture")) for d in _searchable(diary, SEARCH_DIARY)]
         out += [(f'The human said "{c["human"]}" and I answered "{c["duck"]}"',
                  f'{when(c["date"])}: {c.get("who") or "the human"} said "{c["human"]}", you answered "{c["duck"]}"'
                  + (f" (it felt: {c['feeling']})" if c.get("feeling") else f" (you felt {c['felt']})" if c.get("felt") else ""),
-                 "talk", c.get("feel", 0.0), c.get("feeling"), c.get("date")) for c in conversations[-SEARCH_CONVERSATIONS:]]
+                 "talk", c.get("feel", 0.0), c.get("feeling"), c.get("date")) for c in _searchable(conversations, SEARCH_CONVERSATIONS)]
+        if MEMORY_STRENGTH:          # (to find the entry again when it comes up)
+            _entry_of.clear()
+            for d in _searchable(diary, SEARCH_DIARY):
+                _entry_of[f"{when(d['date'])}: {d['text']}" + (f" (it felt: {d['feeling']})" if d.get("feeling") else "")
+                          + (" [a picture memory]" if d.get("picture") else "")] = d
+            for c in _searchable(conversations, SEARCH_CONVERSATIONS):
+                _entry_of[f'{when(c["date"])}: {c.get("who") or "the human"} said "{c["human"]}", you answered "{c["duck"]}"'
+                          + (f" (it felt: {c['feeling']})" if c.get("feeling") else f" (you felt {c['felt']})" if c.get("felt") else "")] = c
     return out
 
 
@@ -459,6 +620,11 @@ def search_memory(question, candidates, count):
     if not candidates:
         return []
     try:
+        from anka.activity import pulse as _view_pulse        # (the brain view: Memory flashes at every search)
+        _view_pulse("memory", 0.6)
+    except Exception:
+        pass
+    try:
         q = question_vector(question)
         M = np.array(document_vectors([c[0] for c in candidates]))
     except Exception as error:
@@ -467,6 +633,29 @@ def search_memory(question, candidates, count):
         return None
     similarity = normalize(M) @ normalize(q)
     hit = similarity > 0.45
+    # Feelings colour what comes up (2026-11-15): when a feeling is strong, "how I feel" is searched for too
+    mood_text, mood_sim = (_mood_words() if MOOD_MEMORY else None), None
+    if mood_text:
+        try:
+            mood_sim = normalize(M) @ normalize(question_vector("I feel " + mood_text))
+            situation_only = similarity.copy()
+            similarity = (1 - MOOD_QUERY) * similarity + MOOD_QUERY * mood_sim
+            hit = hit | (mood_sim > MOOD_HIT)
+        except Exception:
+            mood_sim = None
+    # Associations (2026-11-18): words the moment might remind him of (gemma3:1b, anka/assoc_layer.py)
+    assoc_words, assoc_plain = None, None
+    if ASSOC_SEARCH:
+        try:
+            from anka.assoc_layer import words_for
+            assoc_words = words_for(question)
+            if assoc_words:
+                assoc_sim = normalize(M) @ normalize(question_vector(assoc_words))
+                assoc_plain = similarity.copy()
+                similarity = (1 - ASSOC_QUERY) * similarity + ASSOC_QUERY * assoc_sim
+                hit = hit | (assoc_sim > ASSOC_HIT)
+        except Exception:
+            assoc_words = None
     # The memory palace: memories in the rooms the question is about get a little extra weight
     try:
         names, R = room_vectors()
@@ -483,7 +672,11 @@ def search_memory(question, candidates, count):
     if MOOD_BONUS and felt:
         match = mood_match([candidates[i][4] for i in felt])
         if match is not None:
-            similarity[felt] += MOOD_BONUS * match
+            similarity[felt] += (MOOD_MEMORY_BONUS if mood_text else MOOD_BONUS) * match
+    # Memory strength (2026-11-18): what mattered pulls a little more, what was never used fades
+    if MEMORY_STRENGTH:
+        strong = np.array([min(4.0, strength(_entry_of[c[1]])) / 4.0 if c[1] in _entry_of else 0.0 for c in candidates])
+        similarity = similarity + MEMORY_STRENGTH_BONUS * strong
     # Habituation: a memory that just came up pulls weaker for a while (grows each time it comes up, fades each question)
     if HABITUATION:
         similarity = similarity - HABIT_STRENGTH * np.array([_used_to.get(c[1], 0.0) for c in candidates])
@@ -512,6 +705,22 @@ def search_memory(question, candidates, count):
         old = [i for i in order if earlier(i) and i not in best]
         if old:
             best = best[:count - 1] + [old[0]]
+    if assoc_words and assoc_plain is not None:   # for measuring: which memories came up BECAUSE of the associations
+        plain = [i for i in np.argsort(-assoc_plain) if assoc_plain[i] > 0.45][:count]
+        try:
+            from anka.trace import trace
+            trace("assoc_memory", words=assoc_words, memories=[candidates[i][0][:100] for i in best if i not in plain])
+        except Exception:
+            pass
+    if mood_sim is not None:     # for measuring: which memories came up BECAUSE of how he felt
+        plain = [i for i in np.argsort(-situation_only) if situation_only[i] > 0.45][:count]
+        extra = [candidates[i][0][:100] for i in best if i not in plain]
+        if extra:
+            try:
+                from anka.trace import trace
+                trace("mood_memory", mood=mood_text, memories=extra)
+            except Exception:
+                pass
     _recently_shown.append([candidates[i][1] for i in best])
     del _recently_shown[:-MEMORY_RECENT]
     for k in list(_used_to):                      # the "used to it" feeling fades a little with every question...
@@ -520,7 +729,42 @@ def search_memory(question, candidates, count):
             del _used_to[k]
     for i in best:                                # ...and grows for what came up now
         _used_to[candidates[i][1]] = _used_to.get(candidates[i][1], 0.0) + 1.0
+    if MEMORY_STRENGTH:
+        old_ones = []
+        for i in best:
+            e = _entry_of.get(candidates[i][1])
+            if e is not None:
+                if e not in diary[-SEARCH_DIARY:] and e not in conversations[-SEARCH_CONVERSATIONS:]:
+                    old_ones.append(candidates[i][0][:100])
+                strengthen(e)
+        if old_ones:                              # for measuring: memories that only came up because they are strong
+            try:
+                from anka.trace import trace
+                trace("old_memory", memories=old_ones)
+            except Exception:
+                pass
     return [candidates[i] for i in best]
+
+
+def _mood_words():
+    """How he feels, in words, when something is strong (a HIGH feeling, an after-feeling, or his own strong words);
+    None when he feels ordinary - then only the situation decides what he remembers."""
+    from anka.feelings import feelings, feelings_lock, echoes, RESTING
+    names = {"curiosity": "curious", "boredom": "bored", "loneliness": "lonely", "happiness": "happy",
+             "affection": "loving", "nervousness": "scared", "playfulness": "playful"}
+    with feelings_lock:
+        f = dict(feelings)
+        lingering = [e.get("word") for e in echoes.values() if e.get("word")]
+    rest = lambda k: RESTING.get(k, (0.0, 0))[0]
+    strong = [k for k, v in sorted(f.items(), key=lambda kv: -abs(kv[1] - rest(kv[0])))
+              if v >= 0.7 or (k == "happiness" and v <= 0.2)][:2]
+    words = [("very " if f[k] >= 0.85 else "") + (names[k] if not (k == "happiness" and f[k] <= 0.2) else "sad")
+             for k in strong]
+    words += [w for w in lingering if w not in words][:1]
+    own = feeling_now(120)
+    if not words:
+        return None
+    return ", ".join(words) + (f" ({own})" if own else "")
 
 
 def which_room(texts):

@@ -44,3 +44,5 @@ __pycache__/
 # the one window hands pictures and the log over in these files while a run is going
 app/ankasim/live_*
 app/ankasim/preview/
+# the brain view's live activity file (written while Anka runs)
+app/viz/activity.json

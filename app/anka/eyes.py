@@ -8,6 +8,7 @@ import urllib.request
 
 import numpy as np
 
+from settings import (FAMILIARITY,)
 from settings import (AWAY_AFTER, CAMERA, CAMERA_WINDOW_SIZE, CLOUD_PICTURE_WIDTH, EYE_CHECKS_PER_SECOND, FACE_MATCH, FACE_SURE, FAMILIAR_AFTER, FOLDER, KNOWN_FACES_FILE, LEARN_FACES_MYSELF, LOOK_ALWAYS_WITH_CLOUD, LOOK_EVERY, LOOK_IN_THOUGHTS, MAX_FACE_PICTURES, NAME, NEW_THING_AFTER, PICTURE_WIDTH, RECOGNISE_FACES, SFACE_FILE, SFACE_URL, SHORT_OUTPUT, SHOW_CAMERA, SIM, YUNET_FILE, YUNET_URL)
 from anka.shared import S, cv2, state, wake
 
@@ -512,6 +513,13 @@ def update_sight(things, now):
     think_now = False
     names = tuple(sorted({name for name, _ in things}))
     new_kinds = [n for n in names if n not in seen]
+    try:                                  # (the brain view: Vision flashes when what he sees changes)
+        from anka.activity import pulse as _view_pulse
+        if names != state.get("_view_names"):
+            state["_view_names"] = names
+            _view_pulse("vision", 1.0 if new_kinds else 0.5, text=("ANKA spots a " + new_kinds[0] + ".") if new_kinds else None)
+    except Exception:
+        pass
     if new_kinds:
         with memory_lock:
             for n in new_kinds:
@@ -577,6 +585,17 @@ def update_sight(things, now):
         for who in known_now:
             state.setdefault("who_seen_at", {})[who] = now
         state["person_last"] = now
+    if FAMILIARITY:                       # 2026-11-18: getting to know things and people over days
+        state["here_names"] = [n for n in names if n != "person"] + list(dict.fromkeys(state.get("who", []))) if person_now \
+            else [n for n in names if n != "person"]
+        for n in names:
+            if n != "person" and now - state["seen_at"].get(n, 0) > NEW_THING_AFTER:
+                note_familiar(n)
+        if person_now:
+            for who in dict.fromkeys(state.get("who", [])):
+                if now - state.setdefault("familiar_who_at", {}).get(who, 0) > AWAY_AFTER:
+                    note_familiar(who)
+                state["familiar_who_at"][who] = now
     for n in names:
         if now - state["seen_at"].get(n, 0) > NEW_THING_AFTER:
             state["seen_since"][n] = now  # a new "round" – it has been gone for a while
@@ -596,7 +615,7 @@ def make_scene(things, faces):
 
 
 # ---- other parts of Anka (imported last, so the parts can use each other) ----
-from anka.memory import (ago, human_name, memory_lock, save_json, save_memory, seen, write_diary)
+from anka.memory import (ago, human_name, memory_lock, note_familiar, save_json, save_memory, seen, write_diary)
 from anka.brain import cloud_is_on
 from anka.face import show_window
 from anka.ears import camera_key

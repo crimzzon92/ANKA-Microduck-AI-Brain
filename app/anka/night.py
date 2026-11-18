@@ -5,7 +5,7 @@ import re
 import sys
 from datetime import date, datetime, timedelta
 
-from settings import (NIGHT_PICTURES, IDEAS, IDEAS_PER_NIGHT, MAX_IDEAS, BEDTIME, CLOUD_BRAIN, CLOUD_KEY, NIGHT_CLOUD_BRAIN, FEELING_HEALS, GOAL_MAX_DAYS, MAX_DREAM_EVENTS, MAX_LESSONS, MAX_SELF, MAX_TIDY_CHANGES, MEMORY_FILE, NAME, REVIEW_THE_DAY, SELF_CHANGES_PER_NIGHT, SIM, TIDY_AT_NIGHT)
+from settings import (LESSON_FIX, MEMORY_PERMANENT, NIGHT_PICTURES, IDEAS, IDEAS_PER_NIGHT, MAX_IDEAS, BEDTIME, CLOUD_BRAIN, CLOUD_KEY, NIGHT_CLOUD_BRAIN, FEELING_HEALS, GOAL_MAX_DAYS, MAX_DREAM_EVENTS, MAX_LESSONS, MAX_SELF, MAX_TIDY_CHANGES, MEMORY_FILE, NAME, REVIEW_THE_DAY, SELF_CHANGES_PER_NIGHT, SIM, TIDY_AT_NIGHT)
 from anka.shared import S, to_remember
 
 
@@ -263,6 +263,26 @@ def tidy_facts():
     return changes[:MAX_TIDY_CHANGES]
 
 
+REVIEW_BODY_FACTS = True   # 2026-11-18: the day's review also sees what his BODY really did and reported (B lines) - run 11-18
+                           # 10:01: it forgot the true "I kicked a ball with Alex" as a mistake, because other memories that
+                           # day were missed kicks; the body's report of the kick that moved the ball 28 cm was never shown to it
+
+
+def _body_facts(n=15, most=40):
+    """The body's own reports of today's moves ('kick right -> ... the ball moved about 28 cm'), in order: the last n
+    moves, and every earlier move that did more than walk, turn or look (a kick, a peck, picking up, sitting) - run
+    11-18 10:38: with only the last 25 moves, a kick early in the day wasn't among them and the night called the true
+    "I kicked the ball when Alex told me to!" a mistake."""
+    try:
+        from anka.body import body as _b
+        acts = [(a, r) for a, r in list(getattr(_b, "actions", []) or []) if a and r]
+    except Exception:
+        return []
+    plain = re.compile(r"(?i)^\s*(walk|turn|look|go|explore|stop|move)\b")
+    keep = [i for i, (a, _) in enumerate(acts) if i >= len(acts) - n or not plain.match(a)]
+    return [acts[i] for i in keep][-most:]
+
+
 def review_day(dry_run=False):
     """At night: the brain looks over today's conversations and diary and points out memories that are
     built on a MISTAKE. Those are forgotten (and written in the cleanup log). Returns how many."""
@@ -276,7 +296,10 @@ def review_day(dry_run=False):
     who = human_name() or "Human"
     lines = [f'T{i}. ' + (f'(in view: {", ".join(c["seen"])}) ' if c.get("seen") else "")
              + f'{c.get("who") or who}: "{c["human"]}" – {NAME}: "{c["duck"]}"' for i, c in enumerate(talks, 1)]
-    lines += [f"D{i}. {d['text']}" for i, d in enumerate(notes, 1)]
+    lines += [f"D{i}. {d['text']}" + (" [already kept forever]" if MEMORY_PERMANENT and is_permanent(d) else "")
+              for i, d in enumerate(notes, 1)]
+    facts = _body_facts() if REVIEW_BODY_FACTS else []
+    lines += [f"B{i}. he did: {a} – his body reported: {str(r)[:240]}" for i, (a, r) in enumerate(facts, 1)]
     instructions = (
         f"You check today's memories of {NAME}, a small robot duck, before they are kept for good. "
         "Find the memories that are built on a clear MISTAKE:\n"
@@ -299,17 +322,28 @@ def review_day(dry_run=False):
         "or cannot do – you don't know his body; only today's memories do. Keep three things apart: what a memory "
         "SHOWS (observed), what you conclude from it, and what you only guess. Only the first counts.\n"
         "'(in view: ...)' is who the face sensor REALLY saw at that moment – trust it.\n"
+        + ("B lines are what his BODY really did and reported (its sensors, not his words) – trust them like "
+           "'in view'. A memory that a B line shows really happened is NEVER a mistake, even if other memories from "
+           "today show tries that failed: one success among failures is still a success. A B line may SHOW a mistake "
+           "(he said he did something the body reports did not happen), but a B line is never itself a mistake. "
+           "The B lines are NOT the whole day (only the last moves and the bigger ones before): something missing "
+           "from them may still have happened - a missing B line is never proof of a mistake.\n"
+           if facts else "") +
         "Reply with one line per mistake, at most 5. Say what was wrong AND which other memory (or the "
         "'in view' note) shows it:\n"
-        "MISTAKE: <T or D number, e.g. T3> – SHOWN BY: <other T/D number, or 'in view'> – <what was wrong, "
+        "MISTAKE: <T or D number, e.g. T3> – SHOWN BY: <other T/D/B number, or 'in view'> – <what was wrong, "
         "e.g. 'he thought Anna was Alex'>\n"
         "If you suspect something but no memory shows it, write instead:\n"
         "UNSURE: <T or D number> – <what you suspect>   (it will be kept)\n"
         "or NONE if there are no clear mistakes."
+        + ("\nThen, on its own lines, name at most 2 of today's memories so important to him that he should keep them "
+           "FOREVER (a big moment, something that changed him) - not one marked [already kept forever] - or none if no "
+           "memory is like that:\n"
+           "KEEP: <T or D number> – <why it matters>" if MEMORY_PERMANENT else "")
     )
     try:
         answer = ollama([{"role": "system", "content": instructions},
-                         {"role": "user", "content": "\n".join(lines)}], temperature=0.1, max_tokens=160)
+                         {"role": "user", "content": "\n".join(lines)}], temperature=0.1, max_tokens=260)
     except Exception as error:
         print("🧹 Couldn't look over the day:", error)
         return 0
@@ -322,16 +356,29 @@ def review_day(dry_run=False):
         # It has to name what SHOWS the mistake (another memory, or the face sensor) – otherwise it is only the
         # night brain's own guess (2026-11-06: it deleted "I'll try to reach the cup" twice, because it
         # believed a duck can't carry things). A guess keeps the memory.
-        shown = re.search(r"(?i)shown[ \t]*by[ \t]*:?[ \t]*([TD][ \t]*\d+|in[ \t]*view)", reason)
+        shown = re.search(r"(?i)shown[ \t]*by[ \t]*:?[ \t]*([TDB][ \t]*\d+|in[ \t]*view)", reason)
         if not shown or re.sub(r"\s", "", shown.group(1)).upper() == f"{kind.upper()}{nr}":
             item = items[int(nr) - 1] if 1 <= int(nr) <= len(items) else {}
             print(f"🧹 Not sure it was a mistake (no memory shows it) – kept: {item.get('text') or item.get('duck', '')}")
             continue
-        reason = re.sub(r"(?i)^[-–—:,\s]*shown[ \t]*by[ \t]*:?[ \t]*(?:[TD][ \t]*\d+|in[ \t]*view)[ \t]*[-–—:,]*[ \t]*",
+        reason = re.sub(r"(?i)^[-–—:,\s]*shown[ \t]*by[ \t]*:?[ \t]*(?:[TDB][ \t]*\d+|in[ \t]*view)[ \t]*[-–—:,]*[ \t]*",
                         "", reason) or reason
         if 1 <= int(nr) <= len(items) and items[int(nr) - 1] not in wrong:
             wrong.append(items[int(nr) - 1])
             why[id(items[int(nr) - 1])] = reason.strip()
+    if MEMORY_PERMANENT:                          # memories he keeps forever are never removed (2026-11-18)
+        for w in [w for w in wrong if is_permanent(w)]:
+            print(f"⭐ Kept (a memory he keeps forever): {w.get('text') or w.get('duck', '')}  (the review called it a mistake: {why[id(w)]})")
+        wrong = [w for w in wrong if not is_permanent(w)]
+        for kind, nr, reason in re.findall(r"(?i)keep[ \t]*:[ \t]*([TD])[ \t]*(\d+)[ \t]*[-–—:,]*[ \t]*([^\n]*)", answer)[:2]:
+            items = talks if kind.upper() == "T" else notes
+            if 1 <= int(nr) <= len(items) and items[int(nr) - 1] not in wrong:
+                item = items[int(nr) - 1]
+                if not item.get("permanent"):
+                    item["permanent"] = True
+                    print(f"⭐ Kept forever: {item.get('text') or item.get('duck', '')}  ({reason.strip()[:120]})")
+                    if not dry_run:
+                        save_memory()
     for w in wrong:
         text = f'"{w["human"]}" → "{w["duck"]}"' if "human" in w else f'"{w["text"]}"'
         print(f"🧹 Forgot a mistake: {text}  ({why[id(w)]})")
@@ -444,6 +491,11 @@ def sleep_and_dream():
 
 def _sleep_and_dream():
     """Anka falls asleep: reflects on everything since the last dream, updates its self-image and dreams."""
+    try:                                  # (the brain view: the whole brain dims and dream waves pass through it)
+        from anka.activity import set_sleep
+        set_sleep(True, text="ANKA is asleep and dreaming.")
+    except Exception:
+        pass
     pass  # (shared values live on S)
     print(f"\n😴 {NAME} is going to sleep...")
     while not to_remember.empty():  # conversations not yet saved in the long-term memory
@@ -530,7 +582,9 @@ def _sleep_and_dream():
         "CHANGE: <number> => <updated sentence about yourself, starting with 'I'>\n"
         "REMOVE: <number of a self-belief that is no longer true>\n"
         "ABOUT_HUMAN: <an insight about the human, starting with 'The human'>\n"
-        "LESSON: <something you will do differently from now on, starting with 'When' or 'Don't' or 'I should'>\n"
+        + ("LESSON: <what you found out in ONE kind of situation: 'When <the situation>, <what happened>' - and, if you "
+           "know one, what might work better there in brackets>\n" if LESSON_FIX else
+           "LESSON: <something you will do differently from now on, starting with 'When' or 'Don't' or 'I should'>\n")
         + ("IDEA: <something you have NOT tried yet that might work next time, starting with 'Maybe I could'>\n"
            "IDEA_DONE: <number of one of your earlier ideas that your body tried today (it worked or not) or that no longer "
            "makes sense>\n" if IDEAS else "")
@@ -546,10 +600,16 @@ def _sleep_and_dream():
         "- Write them plain and concrete, like 'I love it when Alex comes home'. Never start with 'I am learning'.\n"
         "- At most 2 ABOUT_HUMAN lines, only about something the human really SAID to you – never about "
         "things you only saw, thought or dreamt.\n"
-        "- At most 2 LESSON lines. Look honestly at how your talking went: did you ask for the same thing "
-        "again and again, ask questions nobody answered, interrupt, repeat yourself, or say something "
-        "that went well? A lesson must come from something that really happened today. "
-        "It is fine to write no lesson. Don't repeat a lesson you already have."
+        + ("- At most 2 LESSON lines. Look at the whole day - moving, finding things, your body, talking, feelings. A "
+           "lesson is an EXPERIENCE that belongs to one kind of situation, not a rule for everything: write what "
+           "happened and when ('When I talked to the empty room after Alex left, nobody answered (talking can wait "
+           "until someone is back)'), not 'I should ...' or 'Don't ...'. Never a lesson to do nothing, stay still or wait "
+           "in general. A lesson must come from something that really happened today. It is fine to write no lesson. "
+           "Don't repeat a lesson you already have." if LESSON_FIX else
+           "- At most 2 LESSON lines. Look honestly at how your talking went: did you ask for the same thing "
+           "again and again, ask questions nobody answered, interrupt, repeat yourself, or say something "
+           "that went well? A lesson must come from something that really happened today. "
+           "It is fine to write no lesson. Don't repeat a lesson you already have.")
         + (f"\n- IDEAS are different from lessons: a lesson is something that HAPPENED; an idea is something you have "
            f"not tried yet. Think about what didn't work today and what else you could do – something your body can "
            f"really do. At most "
@@ -703,7 +763,7 @@ def _sleep_and_dream():
 
 # ---- other parts of Anka (imported last, so the parts can use each other) ----
 from anka.feelings import clean_feeling, feelings_lock
-from anka.memory import (picture_b64, ideas, add_fact, cleanup_log, conversations, core, delete_fact, diary, facts, goals, human_name, learned_on, lessons, mark_outdated, memory_lock, own_said, prune_vectors, remember, room_of, same_fact, save_memory, self_image, since_last_dream, sort_into_rooms, write_diary)
+from anka.memory import (is_permanent, picture_b64, ideas, add_fact, cleanup_log, conversations, core, delete_fact, diary, facts, goals, human_name, learned_on, lessons, mark_outdated, memory_lock, own_said, prune_vectors, remember, room_of, same_fact, save_memory, self_image, since_last_dream, sort_into_rooms, write_diary)
 from anka.brain import cloud, good_sentence, means_same, ollama, parse_numbers
 from anka.trace import trace
 from anka.tried import clear_day, day_words

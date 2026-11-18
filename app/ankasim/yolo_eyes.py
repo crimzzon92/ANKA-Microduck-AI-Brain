@@ -26,7 +26,11 @@ except ImportError:                                # (no camera tools: no eyes)
 HERE = os.path.dirname(os.path.abspath(__file__))
 FOLDERS = [os.path.join(HERE, ".."), os.path.join(HERE, "..", "models"), HERE]
 CAM_H = 0.20
-FOV_H, FOV_V = 45.0, 73.0
+try:                                # 2026-11-18: the angles come from camera_model.py (the retail duck: about 85 x 55)
+    from . import camera_model as _CAM
+except ImportError:
+    import camera_model as _CAM
+FOV_H, FOV_V = _CAM.FOV_H, _CAM.FOV_V
 COCO = {"sports ball": "ball", "cup": "cup"}                 # what yolo11n's words mean in Anka's room
 COCO_EXTRA = {"couch": "sofa", "dining table": "table", "person": "person", "bed": "bed", "chair": "chair"}   # (only shown in the test)
 WORDS = ["sock", "guitar"]                                    # what yoloe is asked to find

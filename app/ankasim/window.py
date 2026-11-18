@@ -31,7 +31,7 @@ SYMBOLS = [("💭", "thinks:"), ("🦆", "says:"), ("❤️", "feels:"), ("🫀"
            ("🧑", ""), ("🎬", "script:"), ("🦉", "wise brain:"), ("🔎", "checked:"), ("📔", "diary:"), ("🎯", "goal:"),
            ("🏁", "goal done:"), ("🫳", "gave up:"), ("🧭", "mindful:"), ("🖼️", "kept a picture:"), ("🗺️", "map:"),
            ("🔊", "sound:"), ("👀", "sees:"), ("😴", ""), ("🌙", "night:"), ("🪞", "new about me:"), ("📝", "lesson:"),
-           ("💡", "idea:")]
+           ("💡", "idea:"), ("🌀", "urge:")]
 COLOURS = {"thinks:": (230, 200, 150), "says:": (120, 230, 255), "feels:": (170, 140, 255), "body:": (230, 150, 90),
            "move:": (150, 220, 150), "surprised:": (90, 160, 255), "script:": (200, 200, 200)}
 BG = 24
@@ -67,7 +67,8 @@ KINDS = {"says:":       ("SAYS",    (60, 200, 255),   (150, 235, 255),  True),
          "wise brain:": ("WISE",    (200, 200, 120),  (210, 210, 170),  False),
          "goal:":       ("GOAL",    (120, 210, 120),  (180, 220, 180),  False),
          "goal done:":  ("GOAL",    (120, 210, 120),  (180, 220, 180),  False),
-         "idea:":       ("IDEA",    (120, 210, 120),  (180, 220, 180),  False)}
+         "idea:":       ("IDEA",    (120, 210, 120),  (180, 220, 180),  False),
+         "urge:":       ("WANTS",   (150, 120, 255),  (200, 185, 245),  False)}
 DIM_TAGS = {"body:": "body", "move:": "move", "sees:": "sees", "script:": "script", "mindful:": "mind",
             "diary:": "diary", "sound:": "sound", "map:": "map", "checked:": "check", "kept a picture:": "picture",
             "gave up:": "goal", "night:": "night", "new about me:": "me", "lesson:": "lesson"}
@@ -89,7 +90,7 @@ def _entry(raw):
     text = re.sub(r"\s*\d+(\.\d+)?s\s*$", "", text)          # the thinking time at the end
     text = re.sub(r"^\(thinking\)\s*", "", text)
     text = text.replace("decided to stay quiet", "(quiet)")
-    m = re.fullmatch(r"\((?:Anka|body):\s*(.*)\)", text)   # "(Anka: look around -> ...)" -> "look around -> ..."
+    m = re.fullmatch(r"\((?:Anka|body|inner urge):\s*(.*)\)", text)   # "(Anka: look around -> ...)" -> "look around -> ..."
     if m:
         text = m.group(1)
     if not text:
@@ -102,16 +103,16 @@ def _entry(raw):
     return (DIM_TAGS.get(label, ""), DIM, text, DIM, False)
 
 
-def log_panel(lines, w, h):
+def log_panel(lines, w, h, k=1.0):
     """The last log lines: a coloured tag in front, the important ones bright, word-wrapped (redrawn only when
     something changed)."""
-    key = (w, h, len(lines), lines[-1] if lines else "")
+    key = (w, h, k, len(lines), lines[-1] if lines else "")
     if _log_cache["key"] == key:
         return _log_cache["img"]
     img = np.full((h, w, 3), BG, np.uint8)
-    cv2.putText(img, "what is happening", (12, 20), FONT, 0.45, (150, 150, 150), 1, cv2.LINE_AA)
-    tag_w, x0, step = 70, 12, 18
-    cols = max(20, int((w - tag_w - x0 - 8) / 7.3))
+    cv2.putText(img, "what is happening", (12, int(22 * k)), FONT, 0.5 * k, (150, 150, 150), 1, cv2.LINE_AA)
+    tag_w, x0, step = int(70 * k), 12, int(18 * k)      # (2026-11-18: k = text size, bigger in the big window)
+    cols = max(20, int((w - tag_w - x0 - 8) / (7.3 * k)))
     entries = []                                        # (rows, tag, tag colour, text colour, important)
     for raw in list(lines)[-40:]:
         e = _entry(raw)
@@ -119,23 +120,23 @@ def log_panel(lines, w, h):
             tag, tc, text, xc, imp = e
             entries.append((textwrap.wrap(text, cols) or [""], tag, tc, xc, imp))
     # fit from the newest backwards
-    y_room, keep = h - 30, []
+    y_room, keep = h - int(30 * k), []
     for e in reversed(entries):
-        need = len(e[0]) * step + 6
+        need = len(e[0]) * step + int(6 * k)
         if need > y_room and keep:
             break
         keep.append(e)
         y_room -= need
-    y = 40
+    y = int(44 * k)
     for rows, tag, tc, xc, imp in reversed(keep):
         if imp:                                         # a soft band behind what he says and thinks
-            cv2.rectangle(img, (4, y - 14), (w - 4, y + (len(rows) - 1) * step + 6), (40, 40, 40), -1)
-            cv2.rectangle(img, (4, y - 14), (7, y + (len(rows) - 1) * step + 6), tc, -1)
+            cv2.rectangle(img, (4, y - int(14 * k)), (w - 4, y + (len(rows) - 1) * step + int(6 * k)), (40, 40, 40), -1)
+            cv2.rectangle(img, (4, y - int(14 * k)), (int(4 + 3 * k), y + (len(rows) - 1) * step + int(6 * k)), tc, -1)
         if tag:
-            cv2.putText(img, tag, (x0, y), FONT, 0.42, tc, 2 if imp else 1, cv2.LINE_AA)
+            cv2.putText(img, tag, (x0, y), FONT, 0.42 * k, tc, 2 if imp else 1, cv2.LINE_AA)
         for i, row in enumerate(rows):
-            cv2.putText(img, row, (x0 + tag_w, y + i * step), FONT, 0.45 if imp else 0.42, xc, 1, cv2.LINE_AA)
-        y += len(rows) * step + 6
+            cv2.putText(img, row, (x0 + tag_w, y + i * step), FONT, (0.45 if imp else 0.42) * k, xc, 1, cv2.LINE_AA)
+        y += len(rows) * step + int(6 * k)
     _log_cache.update(key=key, img=img)
     return img
 
@@ -224,24 +225,106 @@ def waiting_room(w=936, h=460, steps=None, now=None):
     return img
 
 
+def _depth_colour(d):
+    """Near = red, far = green (like the camera overlay)."""
+    t = max(0.0, min(1.0, (d - 0.15) / 1.5))
+    return (int(40 + 60 * t), int(60 + 170 * t), int(230 - 170 * t))
+
+
+def _depth_grid(tof, side, k):
+    """2026-11-18: the depth sensor's 8x8 zones with their distance in cm, side x side pixels."""
+    img = np.full((side, side, 3), BG, np.uint8)
+    cv2.putText(img, "depth sensor (cm)", (4, int(18 * k)), FONT, 0.45 * k, (150, 150, 150), 1, cv2.LINE_AA)
+    top = int(28 * k)
+    cell = (side - top - 4) // 8
+    for r in range(8):
+        for c in range(8):
+            x1, y1 = 4 + c * cell, top + r * cell
+            d = float("nan") if tof is None else float(tof["m"][r, c])
+            colour = (50, 50, 50) if d != d else _depth_colour(d)
+            cv2.rectangle(img, (x1, y1), (x1 + cell - 2, y1 + cell - 2), colour, -1)
+            if d == d:
+                cv2.putText(img, f"{d * 100:.0f}", (x1 + 3, y1 + cell // 2 + int(5 * k)), FONT, 0.33 * k,
+                            (20, 20, 20), 1, cv2.LINE_AA)
+    return img
+
+
+def _facts_panel(eyes, w, h, k=1.0):
+    """The numbers (connection, odometry, head, depth, what he finds) on the left, the depth sensor's grid on the right,
+    and the key help, in a w x h panel."""
+    out = np.full((h, w, 3), BG, np.uint8)
+    side = min(h - int(24 * k), w // 2)
+    if side > 60:
+        g = _depth_grid(eyes.get("tof"), side, k)
+        out[:side, w - side - 6:w - 6] = g
+    text_w = w - side - 18
+    cv2.putText(out, "his body's numbers", (14, int(22 * k)), FONT, 0.5 * k, (150, 150, 150), 1, cv2.LINE_AA)
+    y, step = int(48 * k), int(22 * k)
+    scale = 0.46 * k
+    for text, colour in eyes.get("facts", []):
+        if y > h - int(30 * k):
+            break
+        while text and cv2.getTextSize(text, FONT, scale, 1)[0][0] > text_w:   # (cut what doesn't fit beside the grid)
+            text = text[:-1]
+        cv2.putText(out, text, (14, y), FONT, scale, colour, 1, cv2.LINE_AA)
+        y += step
+    if eyes.get("help"):
+        cv2.putText(out, eyes["help"], (10, h - int(10 * k)), FONT, 0.36 * k, (140, 140, 140), 1, cv2.LINE_AA)
+    return out
+
+
+def _window_size():
+    """How much of the screen the window may use (ANKA_WINDOW_SIZE, default 0.8 = 80 %, 2026-11-18)."""
+    try:
+        return max(0.3, min(1.0, float(os.environ.get("ANKA_WINDOW_SIZE", "0.8"))))
+    except ValueError:
+        return 0.8
+
+
 def layout(room, eyes, lines):
-    """The whole window: the room on top, his eyes and the log side by side below. Returns (picture, scale)."""
+    """The whole window. Returns (picture, scale of the room picture, its x offset) - for the mute button.
+    2026-11-18 (eyes given as a dict): drawn at 80 % of the screen, in two columns that fill it -
+      left:  the room from above + his own floor plan, and below it his camera, both as wide as the column
+             (the retail duck's camera is a wide 16:9 picture - before, it was squeezed into a small corner)
+      right: the log on top, his body's numbers below."""
     room = room if room is not None else waiting_room()
+    if isinstance(eyes, dict):
+        sw, sh = screen()
+        k = _window_size()
+        W, H = int(sw * k), int(sh * k)
+        rh, rw = room.shape[:2]
+        cam = eyes.get("cam")
+        cam_ratio = (cam.shape[0] / cam.shape[1]) if cam is not None and cam.size else 9 / 16
+        left_w = int(min(W * 0.66, H / (rh / rw + cam_ratio)))      # room + camera fill the column's height
+        right_w = W - left_w
+        whole = np.full((H, W, 3), BG, np.uint8)
+        s = left_w / rw
+        room_s = cv2.resize(room, (left_w, max(1, int(rh * s))), interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR)
+        whole[:room_s.shape[0], :left_w] = room_s
+        cam_h = H - room_s.shape[0]
+        if cam is not None and cam.size and cam_h > 20:
+            f = min(left_w / cam.shape[1], cam_h / cam.shape[0])
+            small = cv2.resize(cam, (max(1, int(cam.shape[1] * f)), max(1, int(cam.shape[0] * f))),
+                               interpolation=cv2.INTER_AREA if f < 1 else cv2.INTER_LINEAR)
+            x0 = (left_w - small.shape[1]) // 2
+            y0 = room_s.shape[0] + (cam_h - small.shape[0]) // 2
+            whole[y0:y0 + small.shape[0], x0:x0 + small.shape[1]] = small
+        tk = max(1.0, H / 760)                       # text size: grows with the window (2026-11-18: "make the text bigger")
+        facts_h = int(H * 0.36)
+        whole[:H - facts_h, left_w:] = log_panel(lines, right_w, H - facts_h, tk)
+        whole[H - facts_h:, left_w:] = _facts_panel(eyes, right_w, facts_h, tk)
+        cv2.line(whole, (left_w, 0), (left_w, H), (60, 60, 60), 1)
+        return whole, s, 0
     rh, rw = room.shape[:2]
     bottom_h = int(rh * 1.15)          # 2026-11-12: his eyes and the log a bit BIGGER than the room and the floor plan
     eyes_w = int(bottom_h * (eyes.shape[1] / eyes.shape[0])) if eyes is not None else int(rw * 0.5)
     eyes_w = min(eyes_w, int(rw * 0.55))
     whole = np.vstack([room, np.hstack([fit(eyes, eyes_w, bottom_h), log_panel(lines, rw - eyes_w, bottom_h)])])
     sw, sh = screen()
-    # As big as fits on the screen (keeping its shape). ANKA_WINDOW_SIZE makes it smaller: 0.8 = 80 % of that.
-    try:
-        size = max(0.3, min(1.0, float(os.environ.get("ANKA_WINDOW_SIZE", "1.0"))))
-    except ValueError:
-        size = 1.0
-    f = size * min(0.99 * sw / whole.shape[1], 0.99 * sh / whole.shape[0])
+    f = _window_size() * min(sw / whole.shape[1], sh / whole.shape[0])
     if abs(f - 1.0) > 0.01:
         whole = cv2.resize(whole, (int(whole.shape[1] * f), int(whole.shape[0] * f)), interpolation=cv2.INTER_LINEAR)
-    return whole, f
+    return whole, f, 0
 
 
 def write_atomic(path, data):

@@ -108,6 +108,33 @@ When a fast thought fails, a bigger model (`gemini-4-argon`) takes the next one.
 - ❌ In the first version he used the bigger model far too often, even when he wasn't stuck and hadn't tried anything.
   Fixed: it only switches after **two misses in a row**, and the count starts over after each wise thought.
 
+### 🤔 Feelings that colour what he remembers
+How he feels is now part of the memory search, so a lonely Anka is reminded of lonely moments.
+- ✅ In one day alone (3 vs 3): he walked **9.7–12.5 m** with it against **2.3–8.8 m** without, with no overlap, and
+  had more thoughts.
+- 🤔 In the longer life tests (two days) the difference was mixed, and on day 2 he moved a bit *less* with it. It stays
+  on, but it can feed a sad loop (see "personality from experience" below).
+
+### ❌ A small local model for wishes and associations
+The idea: a brain in layers, with a small local model (`gemma3:1b`) doing one job each, like parts of a brain.
+- ❌ **Wishes ("inner urge"):** written in the same answer as the thought, the scene took over the wish. Written by the
+  small local model, blind to the room, the wishes were generic and repeated (*"I want their warmth, desperately"* in
+  12 of 18 wishes in one run), whatever he felt.
+- ❌ **Association words for the memory search:** the small model mostly repeated the scene (*"wall, corner"*,
+  *"ball, wall"*), and after filtering almost nothing was left. No measurable gain.
+- Both are **off by default** and kept in the code for a better small model.
+- **Lesson:** a 1B model can repeat and summarise a text, but it can't yet add a meaningful new thought to it.
+
+### ❌ → ✅ He sat still all day when alone
+In 3-day life tests alone he stood still 67 % of the time and walked less every day (12 → 7 → 4 m).
+- ❌ First try: **restlessness**, a fact line that grows the longer he has been still with nothing new. It fired in
+  only 0–11 % of his thoughts (a small turn of the head counted as activity).
+- ✅ The real cause: when Alex left, Alex's goodbye was shown in **every** thought for 30 minutes, so every thought
+  started with missing Alex. Now it is shown for 2 minutes. With both: **17.2 m a day**, still 49 % of the time, and
+  he no longer gives up after day 1.
+- **Lesson:** look at what he is shown before adding a new mechanism. One line repeated in every prompt can steer him
+  more than any feature.
+
 ---
 
 ## 2. Learning from experience: nights, lessons, self-image
@@ -119,6 +146,11 @@ Each night he goes over the day and removes mistakes. The first versions were to
 - ❌ It treated a **changed plan** ("I'm staying at my old job after all") as a mistake.
 - ✅ Fixed: the review is told who said what and must give a reason for every mistake, and a promise or a plan is never a
   mistake. Wrongly deleted memories went from **3 to 0** over three nights.
+- ❌ It happened again in the 3D simulator: true kick memories were deleted, because the review couldn't see what his
+  body had reported (first none of it, then only the last 25 moves).
+- ✅ Fixed: the review sees his body's reports (the latest moves plus every move that isn't just walking or turning), and
+  a missing report is **never proof** of a mistake. Some memories can also be **kept forever** now: the night marks up
+  to 2 a night, and they are never removed.
 
 ### ❌ → ✅ His self-image didn't match his body
 - ❌ He believed *"I can climb the bookshelf"* after a whole day of failing to.
@@ -131,6 +163,28 @@ Each night he goes over the day and removes mistakes. The first versions were to
   a fact overnight.
 - 🤔 When a night wrote the right idea, the next day he used it in a new place: the ball was delivered in 18 s. That has
   happened in **1 of 3** runs so far.
+
+### ❌ → ✅ Lessons written as orders made him passive
+- ❌ After a day of talking to an empty room, a night wrote *"When I talk into an empty room with no answer, I should
+  wait quietly"*. For the next two days he sat still, *"waiting quietly like I learned"* (0 m, still 91–100 %).
+- ✅ Now lessons are written as **experiences in their situation** (*"When I walked right up to the guitar, I could see
+  its strings"*), never as a lesson to do nothing, and a lesson is only shown when it fits the moment. The first
+  version of that check was too loose (one lesson showed in every thought), so the bar was raised.
+
+### ✅ Getting to know his room
+- ❌ At first he was told everything he recognised every time, and he fixed on one thing (the guitar) for a large share
+  of his thoughts. An early version that named familiar things made it worse.
+- ✅ Now he is told only what is **new today**, and that everything else he knows well. The share of thoughts about his
+  most-thought-of thing went from **44–54 % to 30–33 %** (two versions, 6 and 12 runs).
+
+### 🤔 Personality from experience – real, but too strong
+In the 3-day life tests he wrote, by himself, after day 1: *"I feel lonely when Alex goes out and leaves the room
+quiet."* On days 2–3 he chose that line as the belief he kept in mind 11–24 times a day, about half his thoughts were
+about missing Alex, and he barely moved.
+- Nobody programmed "be sad when alone". It grew from his own day, his own night and his own choices, and it changed
+  what he did on the following days. That is what this project is after.
+- 🤔 It was too strong because nothing pulled the other way. The fix (above) made him active again without removing it.
+  Next: more of what a mind has built in (a base mood, curiosity, energy) to balance it.
 
 ### 🤔 Transfer test: does experience carry over to a *similar* situation?
 Day 1: he can't reach a cup on the table. Day 2: a sock is on the sofa. That's a different thing, different furniture
@@ -279,8 +333,14 @@ This one taught us the most.
   3. The colour finder **dropped anything closer than 12.5 cm**, so he lost the ball just as he got close.
   4. **Very short steps are ignored** by the walking policy, so he couldn't take the last small step up to the ball.
      Longer steps pushed the ball away.
-- 🤔 All four are fixed in the code: walk closer, straighten the head before kicking, see close up, and use step pulses
-  that adapt. It has not hit the ball in a full run yet.
+- ✅ All four were fixed (walk closer, straighten the head before kicking, see close up, step pulses that adapt), and
+  the first real kick rolled the ball 1.2 m.
+- 🤔 Then five more rounds of fixes, measured over 5–10 simulated days each (2026-11-16 to 11-18): find the ball again
+  instead of spinning, step back the right distance, no sideways steps that don't move the body, tell him where the
+  ball really is. He lined up in **5 of 28** tries, against **1 of 55** before. The most common failure now: after
+  turning, looking down misses the ball. Left for later.
+- ✅ The simulator now has the **retail duck's camera** (about 86° × 55°, upright), taken from Pollen's own code. The old
+  one was only about 45° wide, so the ball dropped out of view easily.
 - **Lesson:** a learned skill has hidden assumptions. Test the skill alone first, then inside the brain.
 
 ### ✅ His voice and sounds in the simulator
@@ -296,6 +356,11 @@ Duck sounds, Pollen's 13 emotions and his real voice all play in the simulator, 
   per question.
 - ❌ Caching didn't happen: Google reused nothing for this model, so caching saved 0 %.
 - ✅ A day in the simulator costs about **$0.15–0.25**, and the night about $0.015.
+- ✅ **A newer, cheaper day brain** (2026-11-15): `gemini-3.5-flash-lite`. A 17-minute 3D day went from about $0.17 to
+  **$0.12**, with answers in 1–1.5 s and the same number of actions. His spoken lines got a little shorter and plainer.
+  (`gemini-3.6-flash` was tried too: dearer and slower.)
+- ❌ → ✅ Google sometimes answered **"too busy" (HTTP 429)** for a while. Now those thoughts go to another cloud model
+  first, and only then to the weak local brain.
 - ❌ **The local reserve brain** (Qwen3.5-4B, 3-bit, which fits in 8 GB of RAM) is too weak to *be* Anka. Replies took
   8.6 s and thoughts 21 s, and it missed who it was talking to, didn't feel hurt and ignored corrections. It once
   crashed for lack of memory. It stays as a reserve for when the network is gone, and those stretches are left out of
@@ -315,7 +380,11 @@ Duck sounds, Pollen's 13 emotions and his real voice all play in the simulator, 
 4. **The model believes what you tell it.** If the body says "kicked", he thinks the ball flew, even when he is looking
    at it. Tell him what actually happened.
 5. **Test the body alone first.** The kick test without the brain found in minutes what many full runs couldn't.
-6. **A simulator is not the world.** YOLO, the depth AI and the camera all need the real duck before we know anything.
+6. **Check what he is shown.** A single line repeated in every prompt (the human's goodbye) kept him sitting still for
+   days. Removing the repeat did more than a new feature.
+7. **Small models repeat; they don't add.** A 1B model was fine for scoring and summarising, but its own "ideas" were
+   generic.
+8. **A simulator is not the world.** YOLO, the depth AI and the camera all need the real duck before we know anything.
    That is the next big chapter.
 
 ➡️ Where things stand right now is in [STATUS.md](../STATUS.md).

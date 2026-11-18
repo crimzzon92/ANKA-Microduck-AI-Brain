@@ -424,6 +424,52 @@ def start_3d():
         pause()
 
 
+SUITES = [   # (name, what it tests) - the measuring tests in tools/ (short: one line in a normal terminal)
+    ("moodlife", "feelings colour memory, 2 days, with/without (8 runs, 1 h)"),
+    ("restless", "restlessness, 3 days alone, two lives (6 runs, 45 min)"),
+    ("assoc", "gemma memory search words, alone + cup (4 runs, 30 min)"),
+    ("lessons", "lessons as experiences, 3 days, with/without (12, 1.5 h)"),
+    ("familiar", "getting to know things, 3 days, with/without (12, 1.5 h)"),
+    ("mood", "feelings colour memory, alone + shout (12 runs, 85 min)"),
+    ("localurge", "small local feeling model, alone + shout (12, 85 min)"),
+    ("urge", "inner urge in the same answer, alone + shout (12, 85 min)"),
+    ("echo", "feelings that outlast a shout, with/without (6, 45 min)"),
+    ("lonely", "alone, loneliness held high vs low (6 runs, 45 min)"),
+    ("feelings", "alone + shout, feelings held still (6 runs, 45 min)"),
+    ("expect", "expectation and surprise, with/without (6, 45 min)"),
+    ("talk", "how much he talks, alone and with Alex (6, 42 min)"),
+    ("quick", "one run of each scenario - does it all work? (4, 30 min)"),
+    ("baseline", "alone, cup, sock, shout, 3 runs each (12, 1.5 h)"),
+]
+
+
+def start_tests():
+    say("\n📈 Measuring tests (2D simulator, the real cloud brain, scored at the end)\n")
+    for i, (name, words) in enumerate(SUITES, 1):
+        say(f"  {i:>2}) {name:<9} {words}")
+    choice = ask("\n  Choose (Enter = back): ")
+    if not choice:
+        return
+    clear()
+    if not choice.isdigit() or not 1 <= int(choice) <= len(SUITES):
+        say("  Choose one of the numbers.")
+        pause()
+        return
+    if not ready_for_anka():
+        pause()
+        return
+    name = SUITES[int(choice) - 1][0]
+    if IS_MAC:     # in its own Terminal window, so it can run for an hour while this menu stays here
+        launcher = HERE / "tools" / ("Anka suite.command" if name == "baseline" else f"Anka suite - {name}.command")
+        subprocess.Popen(["open", "-a", "Terminal", str(launcher)])
+        say(f"  ▶️  Started the '{name}' test in its own Terminal window. Leave the computer alone while it runs.")
+        say("     The scores are written to test_logs/scores.csv at the end.")
+        pause()
+    else:
+        run(["bash", str(HERE / "tools" / "Anka suite.command"), name])
+        pause()
+
+
 def teach_face():
     say("\n👤 Teach Anka a face. Anka must be asleep (he uses the camera).\n")
     name = ask("  Whose face should he learn? (Enter = back): ")
@@ -563,6 +609,7 @@ MENU = [
     ("4", "Teach him a face", "", teach_face),
     ("5", "Check that everything is installed", "and fix what is missing", check_all),
     ("6", "Connect to my Microduck", "the real robot", connect_duck),
+    ("7", "Run a measuring test", "experiments, scored", start_tests),
 ]
 
 
@@ -587,8 +634,8 @@ def main():
         say("=" * 52)
         say("  🦆  ANKA – Microduck AI Brain")
         say("=" * 52 + "\n")
-        for key, title, note, _ in MENU:
-            say(f"  {key}) {title:<36}{('(' + note + ')') if note else ''}")
+        for key, title, hint, _ in MENU:
+            say(f"  {key}) {title:<36}{('(' + hint + ')') if hint else ''}")
         say("  q) Quit\n")
         if note:
             say(note + "\n")

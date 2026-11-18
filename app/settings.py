@@ -15,7 +15,7 @@ if "--brain" in sys.argv[:-1]:   # try another brain without editing:  python ru
 # it takes over by itself if there is no key, no internet, or the cloud says no.
 # Put your key (from aistudio.google.com) in a file called cloud_key.txt next to run_anka.py,
 # or set GEMINI_API_KEY. NOTE: the camera pictures and what you say are then sent to Google.
-CLOUD_BRAIN = "gemini-3-flash-preview"   # (was gemini-3.5-flash-lite) or "gemini-3.8-flash" (smarter, costs more). "" = never use the cloud
+CLOUD_BRAIN = "gemini-3.5-flash-lite"   # 2026-11-15 test (same price class as gemini-3-flash-preview, which is deprecated; 3.6 was dearer and doubles 2027-01-01; gemini-2.5-flash answered 404). (was gemini-3.5-flash-lite) or "gemini-3.8-flash" (smarter, costs more). "" = never use the cloud
 CLOUD_API = "google"   # "google" = Google's own Gemini API (knows picture sharpness and shows caching)
                        # "openai" = the OpenAI-compatible way in (CLOUD_URL – any OpenAI-style API works)
 CLOUD_GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
@@ -39,6 +39,12 @@ NIGHT_CLOUD_BRAIN = "gemini-4-argon"   # the night (looking back on the day, tid
 NIGHT_THINKING = "low"      # how long the night brain thinks first: low / medium / high (higher = deeper, slower, dearer)
 NIGHT_TIMEOUT = 120         # seconds the night brain may take per answer (it thinks before it answers)
 CLOUD_RETRY_AFTER = 60      # seconds to wait before trying the cloud again after a problem
+# GOOGLE IS BUSY (2026-11-16): an answer 429/503 means Google has no room for this model right now (it happened for
+# ~20 min with flash-lite while the own limits were used < 1 %). Then another cloud model takes over for a while -
+# the reserve brain on the Mac can't run all of Anka - and if that one is busy too, the cloud is tried again soon.
+CLOUD_FALLBACK = "gemini-3-flash-preview"   # "" = no other cloud model
+CLOUD_BUSY_SWITCH = 300     # seconds the other cloud model answers before the normal one is tried again
+CLOUD_BUSY_RETRY = 15       # seconds to wait (with the reserve brain) when both cloud models are busy
 if "--cloud" in sys.argv[:-1]:   # python run_anka.py --cloud gemini-3.8-flash
     CLOUD_BRAIN = sys.argv[sys.argv.index("--cloud") + 1]
 if "--local" in sys.argv or "--brain" in sys.argv[:-1]:  # only the brain on this Mac
@@ -55,7 +61,7 @@ def _cloud_key():
 
 
 MUJOCO = "--simulate" in sys.argv and "--mujoco" in sys.argv   # the Microduck in Pollen's MuJoCo simulator (python run_anka.py --simulate --mujoco)
-BODY_CLOUD_BRAIN = "gemini-3-flash-preview"   # (was gemini-3.8-flash) the body test with real senses uses a smarter cloud brain (better at space
+BODY_CLOUD_BRAIN = "gemini-3.5-flash-lite"   # (2026-11-15 test; was gemini-3-flash-preview, before that gemini-3.8-flash) the body test with real senses uses a smarter cloud brain (better at space
                                         # and pictures, costs more). "" = use CLOUD_BRAIN as usual
 if BODY_CLOUD_BRAIN and CLOUD_BRAIN and "--simulate" in sys.argv and ("--body" in sys.argv or MUJOCO) \
         and "--easy" not in sys.argv and "--cloud" not in sys.argv:
@@ -76,7 +82,7 @@ HEAR_DIRECTION = True       # can he hear which direction a voice comes from? (n
 ONE_AT_A_TIME = True        # only ONE heavy AI works at a time: the brain, the ears or the voice
 UNLOAD_AFTER = 120          # seconds: ears and voice are unloaded when unused this long (0 = never)
 SAVE_EVERY = 15             # seconds: changes to the memory are saved to disk at most this often (in the background)
-CONTEXT_SIZE = 5120 if "--body" in sys.argv else 3072   # how much text the LOCAL brain holds at once (smaller = less
+CONTEXT_SIZE = 5120 if ("--body" in sys.argv or "--mujoco" in sys.argv) else 3072   # how much text the LOCAL brain holds at once (smaller = less
 #   memory). 2026-11-08: with the body the questions are 3,100-3,800 tokens, so 3072 made the reserve brain fail every time.
 
 # ---------- How the brain picks words ----------
@@ -211,6 +217,19 @@ STRONG = 0.7                # a need this strong is described to the brain as HI
 # only fade back towards normal at this pace (half the way every ECHO_HALF_LIFE seconds). He is told it is still
 # there and where it came from. What he does about it is his own choice. False = as before (feelings snap back).
 FEELING_ECHO = "--no-echo" not in sys.argv   # (--no-echo = switch it off for one run, to compare)
+# HIS INNER URGE (2026-11-15): what his feelings make him WANT, told to the thinking brain as a fact (never an order).
+#   "local" = the FEELING LAYER: a small model on this Mac that only sees his feelings, never the room (anka/urge_layer.py)
+#   "same"  = the thinking brain writes an URGE line first in the same answer (it sees the room too - the room took over)
+#   "off"   = no urge.   For one run: --urge local / --urge same / --urge off  (--no-urge = off)
+URGE_MODE = "off"     # (2026-11-15 evening: the local layer gave generic, repeated wishes - off until improved)
+if "--urge" in sys.argv[:-1]:
+    URGE_MODE = sys.argv[sys.argv.index("--urge") + 1]
+if "--no-urge" in sys.argv:
+    URGE_MODE = "off"
+URGE_MODEL = "gemma3:1b"    # chosen in test A0 (tools/urge_models_test.py): 0.9 GB, 0.3 s, steady and sensible
+URGE_EVERY = 20             # seconds between two wishes (and at once when a feeling jumps by URGE_JUMP)
+URGE_JUMP = 0.2
+INNER_URGE = URGE_MODE == "same"   # (the URGE line in the thought itself)
 ECHO_MIN_JUMP = 0.3         # a jump this big (0-1) in one go leaves an after-feeling
 ECHO_HALF_LIFE = {"nervousness": 120, "happiness": 60, "playfulness": 90}   # seconds (affection fades slowly anyway;
 #   happiness shorter: after a sorry he may be glad again fairly soon – while the fear still lingers)
@@ -252,6 +271,44 @@ HABIT_STRENGTH = 0.20          # how much weaker a memory pulls right after it c
 HABIT_FADE = 0.7               # after each question the "used to it" feeling keeps this share (0.7 = mostly gone after ~6)
 MEMORY_REPEAT_PENALTY = 0.10   # a memory he was shown in his last few questions counts this much less (0 = off)  (only when HABITUATION is False)
 MEMORY_RECENT = 8              # ...the memories of this many latest questions count as "recently shown"
+# MEMORY STRENGTH (2026-11-18): one principle for the long run - what MATTERS gets stronger, what is never used fades
+# slowly. Every diary line and conversation has a strength: at first from how much it moved him (feel), a surprise,
+# a "first time" or a picture; it grows a little each day it comes up in his thoughts, and halves every
+# MEMORY_HALF_DAYS days. The search no longer looks ONLY at the latest lines: strong old memories still come up, weak
+# old ones fade out; and when the memory is full the WEAKEST old line goes, not the oldest. (--no-memory-strength = off)
+MEMORY_STRENGTH = "--no-memory-strength" not in sys.argv
+MEMORY_HALF_DAYS = 7.0         # days: an unused memory's strength halves this fast
+MEMORY_STRENGTH_BONUS = 0.06   # search: at most this much extra pull for a strong memory (similarity is ~0.5-0.9)
+MEMORY_RECALL_BOOST = 0.3      # how much a memory gains (once a day) when it comes up in his thoughts
+MEMORY_OLD_MIN = 0.5           # an older memory (outside the latest SEARCH_* lines) is searched while it is this strong
+# FAMILIARITY (2026-11-18, memory item 3 part 3): over days he gets to know things and people - a fact for the brain,
+# not a rule: "how well you know what is here: the guitar - very familiar (seen on 6 days); the sock - new to you".
+# What that means (curious, bored, glad to see it) is his own. (--no-familiarity = off)
+# RESTLESSNESS (2026-11-18, a drive - like hunger, not a rule): the longer his body stays still and nothing new happens
+# (no move, nothing new seen, nobody talking), the more restless his legs feel - told as a body feeling, and his
+# boredom can't sink below it. Moving, something new or someone talking calms it. What he does about it is his own
+# (he may still sit and wait for Alex). Run 11-18: alone days 2-3 he sat still 60-100 % of the time, missing Alex,
+# with nothing pulling the other way. (--no-restless = off; the battery/energy half waits for the real duck.)
+LAST_WORDS_FOR = 120           # seconds: when he is alone, the human's last words are in his thoughts this long (was 1800)
+RESTLESSNESS = "--no-restless" not in sys.argv
+RESTLESS_AFTER = 60            # seconds of stillness before he starts to feel it
+RESTLESS_FULL = 180            # seconds more until it is as strong as it gets
+FAMILIARITY = "--no-familiarity" not in sys.argv
+# ASSOCIATIONS (2026-11-18, memory item 4): gemma3:1b writes a few words the moment might remind him of; the memory
+# search uses them too (anka/assoc_layer.py). Sees no feelings, writes no wishes. (--no-assoc = off)
+ASSOC_SEARCH = "--assoc" in sys.argv   # 2026-11-18: OFF by default (--assoc = on) - gemma3:1b's words added noise or
+                                       # nothing (suite "assoc" v3/v4); kept for a better small model later
+ASSOC_MODEL = "gemma3:1b"
+ASSOC_QUERY = 0.3              # how much the association words count in the search (the moment: the rest)
+ASSOC_HIT = 2.0                # (v4: off - a memory no longer comes up on the association words alone; they only blend
+                               # into the search. Was 0.6: those memories were mostly unrelated, suite "assoc" 11-18)
+FAMILIAR_NEW_MINUTES = 4.0     # v3: a thing first seen today stops being "new" after this many minutes (like us: new
+                               # in the morning, not new any more after a while with it)
+MEMORY_PERMANENT = True        # 2026-11-18: some memories are kept FOREVER - never faded out, never let go when the
+                               # memory is full, never removed by the night's review: a moment that moved him very much
+                               # (feel >= MEMORY_PERMANENT_FEEL), a "first time", and up to 2 a night that the night brain
+                               # picks as the most important of the day ("KEEP:"). (Only "forget everything" removes them.)
+MEMORY_PERMANENT_FEEL = 0.75
 MEMORY_EARLIER_SLOT = True     # keep one of the slots for the best-fitting memory from an earlier day
 POPUPS_FOLLOW_THOUGHT = True   # alone pop-ups: memories closer to his last thought pop up more easily (still random)
 RECENT_DIARY = 3            # the latest diary entries are always included
@@ -272,6 +329,14 @@ REVIEW_THE_DAY = True       # at night the brain also looks over the day and for
 GOAL_MAX_DAYS = 1           # goals older than this many days are dropped at night (they were about that moment)
 MAX_TIDY_CHANGES = 12       # how many changes the tidy-up may make per night
 MAX_DREAM_EVENTS = 60       # at most this many moments from the day go into the night's looking back and the dream
+# LESSONS AS EXPERIENCES (2026-11-18): run 11-18 13:07 - night 1 wrote "When I talk into an empty room with no answer,
+# I should wait quietly", and on days 2-3 he sat still "waiting quietly like I learned". Now a lesson is written as an
+# experience in its situation (what happened, and what might work better), not a rule ("I should"), the night looks
+# at the whole day (not only his talking), and a lesson is shown in a thought only when it fits the moment (at most
+# LESSONS_SHOWN, found like memories) - not every lesson in every thought and in the system text. (--no-lesson-fix = off)
+LESSON_FIX = "--no-lesson-fix" not in sys.argv
+LESSONS_SHOWN = 2
+LESSON_MIN_SIMILARITY = 0.62   # (0.5 let a single lesson into every thought - suite "lessons" 11-18; similarity is logged)
 MAX_LESSONS = 6             # lessons Anka keeps from looking back on his days (the newest win)
 SELF_CHANGES_PER_NIGHT = 2  # how much the personality may change per night (low = slow change)
 
@@ -295,6 +360,13 @@ FEELING_VECTORS = True      # every memory also keeps HOW it felt, in his own wo
                             # as a point in a "feeling space" (feeling_vectors.npz): similar feelings lie close together,
                             # even in other words. Then he can have countless feelings, not only the seven numbers
 MOOD_BONUS = 0.06           # when he feels a certain way, memories that FELT the same come back more easily
+# FEELINGS COLOUR WHAT HE REMEMBERS (2026-11-15, plan step B/C): when a feeling is strong, the memory search also looks
+# for memories that fit HOW HE FEELS - not only what he sees. A lonely Anka more easily remembers being with someone, a
+# scared one remembers calming down. Only what comes to mind changes; what he does is his own choice. --no-mood-memory = off.
+MOOD_MEMORY = "--no-mood-memory" not in sys.argv
+MOOD_QUERY = 0.35           # how much "how I feel" counts next to "what I see / think" when searching (0..1)
+MOOD_MEMORY_BONUS = 0.15    # (with MOOD_MEMORY) memories that FELT like now count this much more (instead of MOOD_BONUS)
+MOOD_HIT = 0.55             # a memory close to the feeling this much may come up even if it has nothing to do with the scene
 FEELING_HEALS = True        # at night he looks again at the day's strongest moments – a hurt may feel softer now
 FEELING_BONUS = 0.08        # extra weight for moments that moved Anka strongly (joy, love, fear, hurt) – like in a real
                             # mind, they come back more easily than small talk. 0 = all memories count the same
@@ -489,6 +561,17 @@ SCENARIOS = {
         (180, "say [Alex]: I'll read on the sofa for a while."),
         (330, "say: go to sleep"),
     ],
+    # THE KICK DAY (2026-11-16): a short day in the MuJoCo room with only the ball - asked to kick it four times, so a
+    # long run gives many kick tries to measure (python run_anka.py --simulate --mujoco --scenario kick; ~6 min + night)
+    "kick": [
+        (0, "room: Alex=sofa"),
+        (5, "say [Alex] (playful): Hi Anka! Do you see the ball? Walk up to it and kick it!"),
+        (95, "say [Alex]: Where did the ball go? Can you kick it again?"),
+        (180, "say [Alex] (playful): Try to kick the ball once more!"),
+        (265, "say [Alex]: Walk up to the ball and give it another kick."),
+        (345, "say [Alex]: How did the kicking go?"),
+        (375, "say: go to sleep"),
+    ],
     # EVERYTHING HE CAN DO, in one day in the MuJoCo room (2026-11-10, Alex): python run_anka.py --simulate --mujoco --scenario all
     # (~16 min + the night). Each line tests something; the comment says what.
     "all": [
@@ -538,7 +621,9 @@ RUN_CONDITION = ("frozen" if "--frozen-feelings" in sys.argv and not SET_FEELING
                  "feel-" + "-".join(f"{k}{v:g}" for k, v in SET_FEELINGS.items()) if SET_FEELINGS else
                  "noecho" if "--no-echo" in sys.argv else "noexpect" if "--no-expect" in sys.argv else
                  "noideas" if "--no-ideas" in sys.argv else "nowise" if "--no-wise" in sys.argv else
-                 "noliving" if "--no-living" in sys.argv else "normal") \
+                 "noliving" if "--no-living" in sys.argv else "nomood" if "--no-mood-memory" in sys.argv else
+                 "norestless" if "--no-restless" in sys.argv else "noassoc" if "--no-assoc" in sys.argv else "nofamiliar" if "--no-familiarity" in sys.argv else "nolessonfix" if "--no-lesson-fix" in sys.argv else "nostrength" if "--no-memory-strength" in sys.argv else
+                 "sameurge" if URGE_MODE == "same" else "localurge" if URGE_MODE == "local" else "normal") \
                 + ("_life" if LIFE else "")
 RUN_NAME = f"{SCENARIO or 'script'}_{RUN_CONDITION}"
 from datetime import datetime as _datetime

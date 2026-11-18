@@ -16,6 +16,20 @@
 #   "Anka suite.command" expect     = B1: the surprise scenario ×3 with expectations + ×3 without (--no-expect)
 #   "Anka suite.command" echo       = shout ×3 with feelings that outlast the event + shout ×3 without (--no-echo)
 #   "Anka suite.command" talk       = alone ×3 + cup ×3 (~42 min, ≈ $0.60) – how much he talks alone AND with Alex
+#   "Anka suite.command" urge       = INNER URGE: alone ×3 + shout ×3 with the URGE line, the same ×3 + ×3 without (--no-urge)
+#                                     (12 runs, ~85 min) – does a lonely Anka seek company, does he stay careful after a shout?
+#   "Anka suite.command" moodlife   = FEELINGS COLOUR MEMORY in LIFE MODE (memories kept): a fresh life, day 1 alone -> night ->
+#                                     day 2 cup task; with and without (--no-mood-memory), ×2 (8 runs, ~1 h)
+#   "Anka suite.command" familiar   = FAMILIARITY: 3 days alone in life mode with "how well you know what is here", then
+#                                     the same 3 days without (--no-familiarity), two lives each (12 runs, ~1.5 h, ≈ $1.20)
+#   "Anka suite.command" lessons    = LESSONS AS EXPERIENCES: 3 days alone in life mode with the lesson fix, then without
+#                                     (--no-lesson-fix), two lives each (12 runs, ~1.5 h, ≈ $1.20)
+#   "Anka suite.command" assoc      = ASSOCIATIONS (gemma3:1b writes memory search words): alone ×2 + cup ×2 WITH only - compared with
+#                                     the earlier runs without (11-18 17:10-18:23) (4 runs, ~30 min, ≈ $0.40)
+#   "Anka suite.command" restless   = RESTLESSNESS: 3 days alone in life mode, two lives, WITH only - compared with
+#                                     the lesson-fix runs of suite "lessons" (11-18 15:11-16:31) (6 runs, ~45 min, ≈ $0.60)
+#   "Anka suite.command" mood       = FEELINGS COLOUR MEMORY: alone ×3 + shout ×3 with, the same ×3 + ×3 without (--no-mood-memory)
+#   "Anka suite.command" localurge  = FEELING LAYER: alone ×3 + shout ×3 with the local feeling model, the same ×3 + ×3 without
 #   "Anka suite.command" quick      = one run of each scenario (4 runs) – to check that everything works
 cd "$(dirname "$0")/.." || exit 1
 PY="$HOME/anka-env/bin/python"
@@ -41,8 +55,27 @@ case "$SUITE" in
                     "ballcorner --life --newlife" "ballwall --life" "ballcorner --life --newlife --no-ideas" "ballwall --life --no-ideas" "ballwall --life --newlife"
                     "ballcorner --life --newlife" "ballwall --life" "ballcorner --life --newlife --no-ideas" "ballwall --life --no-ideas" "ballwall --life --newlife") ;;
     expect)   RUNS=("surprise" "surprise --no-expect" "surprise" "surprise --no-expect" "surprise" "surprise --no-expect") ;;
+    urge)     RUNS=("alone --urge same" "alone --no-urge" "shout --urge same" "shout --no-urge" "alone --urge same" "alone --no-urge"
+                    "shout --urge same" "shout --no-urge" "alone --urge same" "alone --no-urge" "shout --urge same" "shout --no-urge") ;;
+    moodlife) RUNS=("alone --life --newlife" "cup --life" "alone --life --newlife --no-mood-memory" "cup --life --no-mood-memory"
+                    "alone --life --newlife" "cup --life" "alone --life --newlife --no-mood-memory" "cup --life --no-mood-memory") ;;
+    familiar) RUNS=("alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife --no-familiarity" "alone --life --no-familiarity" "alone --life --no-familiarity"
+                    "alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife --no-familiarity" "alone --life --no-familiarity" "alone --life --no-familiarity") ;;
+    lessons)  RUNS=("alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife --no-lesson-fix" "alone --life --no-lesson-fix" "alone --life --no-lesson-fix"
+                    "alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife --no-lesson-fix" "alone --life --no-lesson-fix" "alone --life --no-lesson-fix") ;;
+    assoc)    RUNS=("alone" "cup" "alone" "cup") ;;   # (v4, 2026-11-18: only WITH - compared with the earlier runs without)
+    restless) RUNS=("alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife" "alone --life" "alone --life") ;;   # (WITH only - compare with suite "lessons")
+    mood)     RUNS=("alone" "alone --no-mood-memory" "shout" "shout --no-mood-memory" "alone" "alone --no-mood-memory"
+                    "shout" "shout --no-mood-memory" "alone" "alone --no-mood-memory" "shout" "shout --no-mood-memory") ;;
+    localurge) RUNS=("alone --urge local" "alone --no-urge" "shout --urge local" "shout --no-urge" "alone --urge local" "alone --no-urge"
+                    "shout --urge local" "shout --no-urge" "alone --urge local" "alone --no-urge" "shout --urge local" "shout --no-urge") ;;
     echo)     RUNS=("shout" "shout --no-echo" "shout" "shout --no-echo" "shout" "shout --no-echo") ;;
-    *) echo "Unknown suite '$SUITE' (baseline, feelings, lonely, twodays, nextday, quick, talk, echo, expect, transfer, balltransfer, wise)"; read -r -p "Press Enter..."; exit 1 ;;
+    *) echo "Unknown suite '$SUITE' (baseline, feelings, lonely, twodays, nextday, quick, talk, echo, urge, localurge, mood, moodlife, expect, transfer, balltransfer, wise, familiar, lessons, assoc, restless)"; read -r -p "Press Enter..."; exit 1 ;;
 esac
 if [ ! -x "$PY" ]; then echo "❌ Can't find $PY"; read -r -p "Press Enter..."; exit 1; fi
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then open -a Ollama; sleep 8; fi   # (memory search needs it)

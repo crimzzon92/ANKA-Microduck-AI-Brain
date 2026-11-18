@@ -1,8 +1,8 @@
 # tools/ – what everything here is for
 
-You don't need any of these to run Anka. The main launchers are one folder up, in `app` (`Start Anka.command`,
+You don't need any of these to run Anka. The main launchers are in the top folder (`Start Anka.command`,
 `Anka in sim.command`, `Start everything.command`). These are for the 3D simulator, for measuring him, for
-repeating the experiments in the [journal](../../docs/JOURNAL.md), and for finding faults.
+repeating the experiments in the [journal](../docs/JOURNAL.md), and for finding faults.
 
 The `.command` files are double-click launchers for macOS. On Linux, run them with `bash "<file>.command"`.
 They all use the Python in `~/anka-env`.
@@ -13,8 +13,10 @@ Start Pollen's simulator first with `Start Anka sim.command` (in the top folder)
 
 | File | What it does |
 |---|---|
-| `Anka in sim (everything).command` | The 17-minute test day that tests everything (`--scenario all`). The [example day](../../examples/mujoco-day/) is one of these. |
+| `Anka in sim (everything).command` | The 17-minute test day that tests everything (`--scenario all`). The [example day](../examples/mujoco-day/) is one of these. |
 | `Anka in sim (still body).command` | The same as `Anka in sim.command`, but with the living body switched off (`--no-living`), to compare. |
+| `Anka in sim (living body).command` | A normal day in the simulator with the living body on (the default), for side-by-side runs with the still body. |
+| `Anka 3D long run.command` | Several 3D days in a row (`[N=5] [scenario=kick]`), each scored. Used for the kick work. |
 | `Anka eyes.command` | A window with what the simulated duck senses: camera, depth grid, IMU. You can drive him by hand with the keys. |
 | `Update Pollen (0.18.9).command` | Moves your copy of Pollen's `microduck` to the release Anka is tested with, and remembers where you were. |
 | `Pollen go back.command` | Undoes that: back to the Pollen version you had before. |
@@ -28,10 +30,19 @@ Start Pollen's simulator first with `Start Anka sim.command` (in the top folder)
 | `replay_test.py` | Replays the moves from a 2D test log offline (no cloud brain, no cost) with many random seeds, to measure his map. |
 | `trail_plot.py` | Draws the path of a replayed log, old settings against new. |
 
+## Watching his brain
+
+| File | What it does |
+|---|---|
+| `Anka brain window.command` | The brain view: which parts of him are busy, as light waves through a net of neurons. Usually opened with the **BRAIN VIEW** button (or B) in the simulator window. Keys: D = demo, Q = close. |
+| `Anka brain window (demo).command` | The same in demo mode (no Anka needed). |
+| `Anka brain view.command` · `(demo)` | The same picture in your web browser (`viz/index.html`, served on 127.0.0.1:8765). |
+| `brain_view_test.js` | Checks the browser version's demo and live levels with Node (no browser). |
+
 ## Repeating the experiments
 
 Each suite runs a set of test days in the 2D simulator with the real cloud brain, then scores them. They cost money:
-roughly $0.10 per run. The numbers they produced are in [STATUS](../../STATUS.md) and the [journal](../../docs/JOURNAL.md).
+roughly $0.10 per run. The numbers they produced are in [STATUS](../STATUS.md) and the [journal](../docs/JOURNAL.md).
 
 | File | Experiment |
 |---|---|
@@ -47,6 +58,16 @@ roughly $0.10 per run. The numbers they produced are in [STATUS](../../STATUS.md
 | `Anka suite - transfer.command` | Transfer test: can't reach a cup on day 1, then a sock on the sofa on day 2, against a fresh life. |
 | `Anka suite - balltransfer.command` | Ball transfer test: with night ideas, without them, and a fresh life. |
 | `Anka suite - wise.command` | The wiser brain when stuck: the ball in the corner, with against without. |
+| `Anka suite - urge.command` | An inner wish written in the same answer as the thought, with against without. |
+| `Anka suite - localurge.command` | The wish written by a small local model (`gemma3:1b`), with against without. |
+| `Anka suite - mood.command` | Feelings colour what he remembers: alone and shout, with against without. |
+| `Anka suite - moodlife.command` | The same over two days in one life. |
+| `Anka suite - familiar.command` | Getting to know things: 3 days alone, with against without, two lives each. |
+| `Anka suite - lessons.command` | Lessons as experiences: 3 days alone, with against without, two lives each. |
+| `Anka suite - assoc.command` | Memory search words from a small local model (with only). |
+| `Anka suite - restless.command` | Restlessness: 3 days alone, two lives (with only). |
+| `Urge models test.command` · `urge_models_test.py` | Compares small local models as the feeling layer, offline (no cloud). |
+| `Assoc words test.command` · `assoc_words_test.py` | Shows the association words the small model writes for a few scenes. |
 
 ## Finding faults in the 3D body
 

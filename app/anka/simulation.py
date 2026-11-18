@@ -189,6 +189,7 @@ def _room_picture(t):
     img = _who_moves(img)
     if SIM_SOUND:
         img = _sound_button(img)
+    img = _brain_button(img)
     return img
 
 
@@ -232,12 +233,14 @@ def show_room(t, wait):
                 pos = os.environ.get("ANKA_ROOM_POS", "")
                 if "," in pos:
                     cv2.moveWindow(title, *[int(float(v)) for v in pos.split(",")[:2]])
-            if SIM_SOUND and not _button["hooked"]:
+            if not _button["hooked"]:
                 cv2.setMouseCallback(title, _click)
                 _button["hooked"] = True
             key = cv2.waitKey(1) & 0xFF
             if SIM_SOUND and key in (ord("m"), ord("M")):
                 set_sound(not S.sound_on)
+            if key in (ord("b"), ord("B")):              # the brain window (2026-11-18) - only when asked for
+                _open_brain()
         except Exception as error:   # no screen (e.g. a test on a server) – the test goes on without the window
             print(f"🗺️  (can't show the room window: {error})")
             _room_window[0] = False
@@ -278,7 +281,8 @@ def _hand_over(room):
         ok, jpg = cv2.imencode(".jpg", room, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if ok:
             W.write_atomic(W.LIVE_ROOM, jpg.tobytes())
-        W.write_atomic(W.LIVE_INFO, json.dumps({"rect": list(_button["rect"]), "t": now}).encode())
+        W.write_atomic(W.LIVE_INFO, json.dumps({"rect": list(_button.get("rect", (0, 0, 0, 0))),
+                                                "brain": list(_button.get("brain", (0, 0, 0, 0))), "t": now}).encode())
         key = (len(RECENT), RECENT[-1] if RECENT else "")
         if key != _one["log_n"]:
             _one["log_n"] = key
@@ -301,10 +305,10 @@ def _one_window(room):
         _one["eyes_t"] = now
         try:
             from ankasim import eyes as _eyes
-            _one["eyes"] = _eyes.compose(body.link)
+            _one["eyes"] = _eyes.eyes_parts(body.link)
         except Exception:
             pass
-    whole, _one["scale"] = W.layout(room, _one["eyes"], list(RECENT))
+    whole, _one["scale"], _ = W.layout(room, _one["eyes"], list(RECENT))
     return whole
 
 
@@ -348,12 +352,40 @@ def _sound_button(img):
     return img
 
 
+def _brain_button(img):
+    """The BRAIN VIEW button (2026-11-18), left of the mute button: click it (or press B) to open Anka's brain window -
+    a separate window showing which parts of him are busy (ankasim/brain_window.py). Never opens by itself."""
+    img = img.copy()
+    text = "BRAIN VIEW  (click / B)"
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+    right = _button["rect"][0] - 10 if SIM_SOUND and _button.get("rect") else img.shape[1] - 8
+    x1, y1 = right - tw - 22, 8
+    x2, y2 = right, y1 + th + 16
+    cv2.rectangle(img, (x1, y1), (x2, y2), (120, 70, 90), -1)
+    cv2.putText(img, text, (x1 + 11, y2 - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+    _button["brain"] = (x1, y1, x2, y2)
+    return img
+
+
+def _open_brain():
+    try:
+        from ankasim import brain_window
+        brain_window.launch()
+    except Exception as error:
+        print(f"🧠  (can't open the brain window: {error})")
+
+
 def _click(event, x, y, flags, param):
     if _one_window_on():                               # the one window is scaled to fit the screen
         x, y = x / _one["scale"], y / _one["scale"]
-    x1, y1, x2, y2 = _button["rect"]
-    if event == cv2.EVENT_LBUTTONDOWN and x1 <= x <= x2 and y1 <= y <= y2:
+    if event != cv2.EVENT_LBUTTONDOWN:
+        return
+    x1, y1, x2, y2 = _button.get("rect", (0, 0, 0, 0))
+    if SIM_SOUND and x1 <= x <= x2 and y1 <= y <= y2:
         set_sound(not S.sound_on)
+    x1, y1, x2, y2 = _button.get("brain", (0, 0, 0, 0))
+    if x1 <= x <= x2 and y1 <= y <= y2:
+        _open_brain()
 
 
 class Tee:

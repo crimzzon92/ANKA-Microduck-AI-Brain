@@ -14,6 +14,11 @@ _broken = [False]
 
 def trace(kind, **data):
     """Adds one line to the thought log: {"t": seconds, "kind": kind, ...data}. Never raises."""
+    try:                     # 2026-11-18: the brain view (anka/activity.py) - also when no thought log is written
+        from anka.activity import from_trace
+        from_trace(kind, data)
+    except Exception:
+        pass
     if not TRACE or _broken[0]:
         return
     row = {"t": round(time.time(), 2), "kind": kind}

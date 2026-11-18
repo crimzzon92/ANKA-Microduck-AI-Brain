@@ -4,6 +4,7 @@ import re
 import time
 from datetime import date, datetime
 
+from settings import INNER_URGE, URGE_MODE, FAMILIARITY, LESSON_FIX, ASSOC_SEARCH, RESTLESSNESS, RESTLESS_AFTER, RESTLESS_FULL, LAST_WORDS_FOR
 from settings import MAX_PICTURES, PICTURE_MEMORY, EXPECT, FROZEN_FEELINGS, IDEAS, MAX_IDEAS, SURPRISE_DIARY, STUCK_AFTER, WISE_WHEN_STUCK
 from settings import (AWAY_AFTER, BODY_SENSES, CHAIN_OF_THOUGHTS, HAS_BODY, CONVERSATION_PAUSE, FEELING_STEP, GOALS_EVERY, MAX_GOALS, MIN_PAUSE, MOVING_FOR, NAME, NAP_AFTER, NAP_WHEN_ALONE, ONE_STEP_THOUGHTS, REST_MAX, SHORT_OUTPUT, SHOW_FEELINGS, SIM, TALK_FADES, TALK_IN_THOUGHTS, TALK_ON_ITS_OWN, TEMP_REPLY, TEMP_THOUGHT, THINK_EVERY, THINK_EVERY_ALONE, THINK_EVERY_MOVING, THOUGHTS_FADE, THOUGHTS_IN_MIND, THOUGHT_MEMORY)
 from anka.shared import (S, answering, awake, heard, listening, state, thought_times, thoughts, timings, to_remember, voice_waiting, wake, wants_to_say)
@@ -38,6 +39,26 @@ def is_alone(now=None):
     return now - state.get("woke_up", now) > AWAY_AFTER      # nobody at all since he woke up
 
 
+def restless_words(now, something_new):
+    """2026-11-18 (RESTLESSNESS): a drive, like hunger - his legs get restless the longer he stays still and nothing new
+    happens. A body feeling for the brain (and his boredom can't sink below it); never an order."""
+    if something_new:
+        state["last_new"] = now
+    still_since = max(state.get("last_active", 0), state.get("last_new", 0), state.get("last_human", 0),
+                      state.get("woke_up", now))
+    still = now - still_since
+    r = 0.0 if still < RESTLESS_AFTER else min(1.0, (still - RESTLESS_AFTER) / RESTLESS_FULL)
+    state["restless"] = round(r, 2)
+    if r <= 0:
+        return ""
+    with feelings_lock:
+        feelings["boredom"] = max(feelings.get("boredom", 0.0), round(0.3 + 0.6 * r, 2))
+    mins = how_long(still)
+    feel = ("your legs feel a little restless" if r < 0.34 else "your legs feel restless" if r < 0.67
+            else "your legs feel very restless - it is hard to keep still")
+    return f"Your body: you have kept still for {mins} and nothing new has happened - {feel}.\n"
+
+
 def presence_facts(now):
     """Who is with him, as facts. When he is alone he is told so plainly – with how long, and the last thing the human
     said before it went quiet (test 26: all 28 things he said by himself were said with Alex in the room; alone he
@@ -46,6 +67,16 @@ def presence_facts(now):
     if visitor:
         return f"{visitor} is here with you right now – {human_name()} is not in view.\n"
     if human_is_here():
+        # 2026-11-18: someone who just said they are going out, but is still in the room, is ON THE WAY OUT - before,
+        # he only heard "the human is here" and 5 s after "bye" he believed Alex had come back
+        with memory_lock:
+            last_words = conversations[-1].get("human", "") if conversations else ""
+            last_who = (conversations[-1].get("who") if conversations else None) or human_name() or "The human"
+        if last_words and state.get("last_human") and now - state["last_human"] < 90 and re.search(
+                r"(?i)\b(going out|go out|heading out|leaving|i'?ll be back|see you (later|soon|tomorrow)|bye|goodbye|"
+                r"good night|off to)\b", last_words):
+            return (f'{last_who} said they are going out ({ago(now - state["last_human"])}: "{last_words[:80]}") and is '
+                    "still in the room - on the way out, not back again.\n")
         seen = state.get("person_seen_at", 0)
         if HAS_BODY and state.get("faces", 0) == 0 and seen and now - seen > 5:   # around, but not in front of him
             return (f"{human_name() or 'The human'} is in the room with you but not in view right now (you last saw them "
@@ -65,7 +96,9 @@ def presence_facts(now):
            + ", so as far as you can tell nobody is in the room with you.\n")
     with memory_lock:
         last_talk = conversations[-1].get("human") if conversations else None
-    if last_talk and state["last_human"] and now - state["last_human"] < 1800:
+    # (2026-11-18: only the first LAST_WORDS_FOR seconds - repeated in every thought for 30 min, Alex's goodbye pointed him
+    #  at missing Alex the way "guitar – very familiar" pointed at the guitar; ~45-50 % of his alone thoughts were Alex)
+    if last_talk and state["last_human"] and now - state["last_human"] < LAST_WORDS_FOR:
         out += f'The last thing {who} said to you ({ago(now - state["last_human"])}): "{last_talk[:160]}"\n'
     return out + "Nobody can hear you right now: anything you say out loud, only you will hear.\n"
 
@@ -212,10 +245,12 @@ def _think_loop():
         situation = (
             f"{scene}\n"
             + (f"Just appeared: {', '.join(appeared)}.\n" if appeared else "")
+            + (familiar_words(state.get("here_names", [])) if FAMILIARITY else "")
             # (left out when something happened or Anka is alone – then the same old things only pull him back)
             + (f"Things that haven't changed for a while: {', '.join(familiar)}.\n"
                if familiar and not events and human_is_here() else "")
             + presence
+            + (restless_words(now, bool(events or appeared)) if RESTLESSNESS and HAS_BODY else "")
             + (f"The human last talked to you {ago(now - state['last_human'])}.\n"
                if state["last_human"] else "The human hasn't talked to you yet since you woke up.\n")
             + (f"You last said something out loud {ago(now - state['last_pip'])}.\n"
@@ -227,7 +262,14 @@ def _think_loop():
         # in the long system text, where the narration lessons were ignored for 3 days). Information, not
         # orders: he names which one matters now (MINDFUL), or none – and he may disagree with it.
         with memory_lock:
-            learned = list(lessons) + [s_ for s_ in self_image[-6:] if s_ not in lessons]
+            all_lessons = list(lessons)
+            self_lines = [s_ for s_ in self_image[-6:] if s_ not in all_lessons]
+        if LESSON_FIX:        # 2026-11-18: only the lessons that fit this moment (found like memories)
+            fitting = relevant_lessons(situation + " " + (recent[-1] if recent else ""))
+        else:
+            fitting = all_lessons
+        with memory_lock:
+            learned = fitting + self_lines
             untested = [x["text"] for x in ideas] if IDEAS else []
         know_myself = ("\nWhat you have learned about yourself, from looking back on your own days (it can be "
                        "wrong – you may disagree – but think about it before you act or speak):\n- "
@@ -278,8 +320,11 @@ def _think_loop():
             + "\nThink ONE new thought, like a small, curious, living duck. Then say how you feel now.\n"
             + know_myself
             + expect_check
+            + _urge_before()
             + "Reply in EXACTLY this form:\n"
-            "THOUGHT: <one short private thought, first person, at most 20 words>\n"
+            + ("URGE: <first listen only to your feelings, as if nothing around you mattered: what do they make you "
+               "want right now? A few words, first person>\n" if INNER_URGE else "")
+            + "THOUGHT: <one short private thought, first person, at most 20 words>\n"
             "FEEL: curiosity=<0-1>, boredom=<0-1>, loneliness=<0-1>, happiness=<0-1>, affection=<0-1>, "
             "nervousness=<0-1>, playfulness=<0-1>\n"
             "FEELING: <how you feel, in your own words – a few words, mixed feelings are fine>\n"
@@ -330,6 +375,10 @@ def _think_loop():
         search = " ".join(x for x in (happened if events else "", recent[-1] if recent else "",
                                       goals[0]["text"] if goals else "",
                                       ft[1] if ft and time.time() - ft[0] < 300 else "", state["scene"]) if x)
+        if ASSOC_SEARCH:      # 2026-11-18: gemma writes association words for this moment - WITHOUT his feelings
+            from anka.assoc_layer import set_moment
+            set_moment(" ".join(x for x in (happened if events else "", recent[-1] if recent else "",
+                                            goals[0]["text"] if goals else "", state["scene"]) if x), search)
         try:
             think_level.level = level
             answer, sent = ask_brain(talk_in_mind + [{"role": "user", "content": step1}],
@@ -355,6 +404,13 @@ def _think_loop():
             continue  # you started talking while Anka was thinking – drop the thought
 
         thought = field("THOUGHT", answer)
+        urge = (field("URGE", answer) or "").splitlines()[0].strip() if INNER_URGE else ""
+        shown_urge = state["urge"][1] if URGE_MODE == "local" and state.get("urge") and time.time() - state["urge"][0] < 60 else None
+        if urge and not re.fullmatch(r"(?i)\W*(none|no|nothing)\W*", urge):
+            state["urge"] = (time.time(), urge[:120])
+            print(f"🌀 (inner urge: {urge[:120]})")
+        else:
+            urge = ""
         feeling_line = field("FEEL", answer)
         own_words = clean_feeling(field("FEELING", answer))
         if own_words and not FROZEN_FEELINGS:   # (experiment: held feelings – his own words don't carry over)
@@ -380,7 +436,19 @@ def _think_loop():
             if note and hasattr(body, "note_place"):
                 body.note_place(note.splitlines()[0])
             act_text = (field("ACT", answer) or "").splitlines()[0].strip() if field("ACT", answer) else ""
+            try:
+                from anka.activity import set_on as _view_on      # (the brain view: Movement lit while the body acts)
+                _view_on("movement", bool(act_text) and act_text.lower() not in ("none", "nothing"), text=act_text or None)
+            except Exception:
+                pass
             act_result = run_act(act_text)  # his body does what he decided (even if the thought was an old one)
+            try:
+                _view_on("movement", False)
+            except Exception:
+                pass
+            if act_result and any(re.search(r"(?i)\b(walk|turn|explore|kick|go|pick|push|peck|bring|put|step)\b",
+                                            str(x.get("step", ""))) for x in act_result):
+                state["last_active"] = time.time()      # (RESTLESSNESS: his body did something)
             if act_result:   # how many thoughts in a row his body failed at something (for thinking harder)
                 failed_now = any(not x.get("ok", True) for x in act_result)
                 state["fail_streak"] = state.get("fail_streak", 0) + 1 if failed_now else 0
@@ -412,7 +480,7 @@ def _think_loop():
                 expect_now = raw[:120]
                 state["expectation"] = {"t": time.time(), "act": act_text, "expect": expect_now,
                                         "result": "; ".join(f"'{x['step']}' → {x['result']}" for x in act_result)[:300]}
-        common_log = dict(feel_before=feel_before, feeling_words=own_words, act=act_text, act_result=act_result,
+        common_log = dict(restless=state.get("restless"), feel_before=feel_before, feeling_words=own_words, act=act_text, act_result=act_result,
                           expect=expect_now, expected=expected, surprise=surprise, surprise_why=surprise_why or None,
                           think_level=level, fail_streak=streak, day_idea=day_idea,
                           human_here=here_now, alone=alone_now, visitor=visitor, events=events, appeared=appeared,
@@ -681,10 +749,25 @@ def _think_loop():
             goals_now = [g["text"] for g in goals]
         trace("thought", thought=thought, repeated=False, feel_after={k: round(v, 2) for k, v in feelings.items()},
               speak=text or None, speak_reason=reason or None, said_check=said_check, may_talk=may_talk, echo=echo_text() or None,
-              mindful=mindful_raw,
+              mindful=mindful_raw, urge=urge or shown_urge or None,
               goal_events=goal_events,
               goals=goals_now, goals_asked=state["thought_nr"] % GOALS_EVERY == 0,
               seconds=round(time.time() - now, 1), **common_log)
+
+
+def _urge_before():
+    """The urge from his last thought, if it was recent - so a wish can last longer than one thought (a fact about
+    himself, never an order: what he does is still his own choice)."""
+    if URGE_MODE == "off" or not state.get("urge"):
+        return ""
+    t, text = state["urge"][:2]
+    if URGE_MODE == "local":     # the feeling layer: fresh every ~20 s
+        if time.time() - t > 60:
+            return ""
+        return f"Your inner urge right now (from your feelings, not from what you see): {text}\n"
+    if time.time() - t > 90:
+        return ""
+    return f"A moment ago your feelings made you want: {text}\n"
 
 
 def _pictures_note():
@@ -699,7 +782,7 @@ def _pictures_note():
 
 # ---- other parts of Anka (imported last, so the parts can use each other) ----
 from anka.feelings import (FEELING_NAMES, clean_feeling, drift_feelings, feelings, feelings_lock, feelings_short, note_jolt, recent_moments, settle_echoes, strong_feeling, echo_text)
-from anka.memory import (keep_picture, ideas, ago, comes_to_mind, conversations, diary, goals, how_long, human_name, lessons, memory_lock, remember, same_fact, save_memory, self_image, write_diary)
+from anka.memory import (familiar_words, relevant_lessons, keep_picture, ideas, ago, comes_to_mind, conversations, diary, goals, how_long, human_name, lessons, memory_lock, remember, same_fact, save_memory, self_image, write_diary)
 from anka.brain import (think_level, Interrupted, ask_brain, clean, cloud_is_on, field, follow_up, means_same, memories_shown)
 from anka.trace import trace
 from anka.eyes import brief_scene, current_speaker, human_is_here, picture_for_thought, scene_without_picture

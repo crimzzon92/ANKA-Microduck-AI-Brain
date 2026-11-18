@@ -13,10 +13,34 @@ from datetime import datetime
 
 import numpy as np
 
+from settings import CLOUD_FALLBACK, CLOUD_BUSY_SWITCH, CLOUD_BUSY_RETRY, LESSON_FIX
 from settings import (PICTURE_REPEAT, BODY_SENSES, BRAIN, CLOUD_API, CLOUD_BRAIN, CLOUD_GOOGLE_URL, CLOUD_CACHED_SHARE, CLOUD_PICTURE_DETAIL, NIGHT_CLOUD_BRAIN, NIGHT_THINKING, NIGHT_TIMEOUT, CLOUD_KEY, CLOUD_KEY_FILE, CLOUD_RETRY_AFTER, CLOUD_THINKING, CLOUD_TIMEOUT, CLOUD_URL, CONTEXT_SIZE, HAS_BODY, MUJOCO, LEARN_FACES_MYSELF, MAX_SENTENCES, MAX_WORDS, MEMORIES_PER_QUESTION, NAME, RECENT_DIARY, RECOGNISE_FACES, REPEAT_PENALTY, SAME_MEANING, SIM, TEMP_REPLY, TOO_SIMILAR, TOP_K, TOP_P)
 from anka.shared import S, state
 
 
+
+
+def _camera_words():
+    """2026-11-18: the facts about his camera, from ankasim/camera_model.py (the retail duck: about 85° wide, 55° tall,
+    a landscape picture). Before, the numbers were written for a portrait camera 45° wide and 73° tall."""
+    try:
+        from ankasim import camera_model as C
+    except Exception:
+        return ""
+    cm = lambda d: f"{d * 100:.0f} cm"
+    return (f"How your eyes measure (facts about your camera, with your head level): your picture is about "
+            f"{C.FOV_H:.0f} degrees wide and {C.FOV_V:.0f} degrees tall. Something at the picture's left or right edge is "
+            f"about {C.side_angle(0):.0f} degrees away from straight ahead, something a quarter of the way in from the "
+            f"edge about {C.side_angle(0.25):.0f} degrees, something in the middle is straight ahead. A spot on the FLOOR "
+            f"at the very bottom of the picture is about {cm(C.floor_distance(0))} away, an eighth of the picture's height "
+            f"above the bottom about {cm(C.floor_distance(1 / 8))}, a quarter up about {cm(C.floor_distance(1 / 4))}, "
+            f"three eighths up about {cm(C.floor_distance(3 / 8))}, and the middle height is far away (the horizon). "
+            "Anything standing on the floor is as far away as the floor is where it touches the ground. If you tilt your "
+            "head, these numbers shift. "
+            f"With your head level you are blind in two places: the floor closer than about {cm(C.floor_distance(0))} in "
+            "front of you (a small thing right at your feet is out of sight, even if your depth sensor feels something "
+            "there), and everything high up (the top of the bookshelf, the window, the tops of tall things) - you only see "
+            "those after you look down or look up. ")
 
 SYSTEM = (
     f"You are {NAME}, a small, curious and playful robot duck. "
@@ -35,17 +59,7 @@ SYSTEM = (
        "(it drifts), and your body, which feels falls. Nobody tells you where things are – look, and remember. "
        "Your legs aren't perfect: a walk can end up a bit shorter or crooked, and you can't see behind you. Your "
        "depth sensor stops you before you walk into something in front of you. "
-       "How your eyes measure (facts about your camera, with your head level): your picture is about 45 degrees wide "
-       "and 73 degrees tall. Something at the picture's left or right edge is about 22 degrees away from straight "
-       "ahead, something a quarter of the way in from the edge about 12 degrees, something in the middle is straight "
-       "ahead. A spot on the FLOOR at the very bottom of the picture is about 35 cm away, an eighth of the picture's "
-       "height above the bottom about 45 cm, a quarter up about 70 cm, three eighths up about 135 cm, and the "
-       "middle height is far away (the horizon). Anything standing on the floor is as far away as the floor is where "
-       "it touches the ground. If you tilt your head, these numbers shift. "
-       "With your head level you are blind in two places: the floor closer than about 20 cm in front of you (a small "
-       "thing right at your feet is out of sight, even if your depth sensor feels something there), and everything "
-       "high up (the top of the bookshelf, the window, the tops of tall things) - you only see those after you look "
-       "down or look up. "
+       + _camera_words() +
        "Your body moves only when you decide to; nobody else decides that for you. To move, write a line ACT: with "
        "one of: walk forward <cm> / walk back <cm> (small steps only) / turn left <degrees> / turn right <degrees> / "
        "turn around / turn to <something you see or remember> / walk to <something you see or remember seeing> / "
@@ -280,7 +294,7 @@ def local_brain(messages, temperature=0.9, max_tokens=None, stop=None):
 
 # ---------- The cloud brain ----------
 # what the cloud brains cost, $ per million tokens read / written (Google's price page, 2026-10-29)
-CLOUD_PRICES = {"gemini-3.5-flash-lite": (0.30, 2.50), "gemini-3-flash-preview": (0.50, 3.00),
+CLOUD_PRICES = {"gemini-3.5-flash-lite": (0.30, 2.50), "gemini-3-flash-preview": (0.50, 3.00), "gemini-3.6-flash": (0.75, 3.75), "gemini-2.5-flash": (0.30, 2.50),
                 "gemini-3.8-flash": (0.75, 3.75), "gemini-4-argon": (2.00, 10.00)}
 
 
@@ -300,11 +314,12 @@ def cloud_cost_words():
 
 
 think_level = threading.local()   # this thread's NEXT question may think longer (set by thinking.py when he is stuck)
-WISE_TIMEOUT = 40   # seconds without an answer from the wiser brain before the normal brain takes the thought
+WISE_TIMEOUT = 25   # seconds without an answer from the wiser brain before the normal brain takes the thought
+                    # (2026-11-18: was 40 - answers come in ~11 s, 29 of 31 within 21 s; 10 of 41 never came and froze him 40 s)
 answered = threading.local()   # which brain answered THIS thread's last question ("cloud"/"local") – for the thought log
 cloud = {"off_until": 0.0, "thinking": CLOUD_THINKING, "said": None, "using": None,
          "night": False, "night_ok": True, "night_usage": [], "usage": [],
-         "media": "part"}   # how the picture sharpness is sent to Google: "part" (each picture), "global" or "off"   # night = he is asleep: the night brain answers
+         "media": "part", "fallback_until": 0.0}   # how the picture sharpness is sent to Google: "part" (each picture), "global" or "off"   # night = he is asleep: the night brain answers
 
 
 def night_brain_on():
@@ -337,7 +352,7 @@ def _cloud_messages(messages):
 MEDIA_LEVELS = {"low": "media_resolution_low", "medium": "media_resolution_medium", "high": "media_resolution_high"}
 
 
-def _google_request(messages, temperature, max_tokens, thinking):
+def _google_request(messages, temperature, max_tokens, thinking, model=""):
     """The question in the form of Google's own Gemini API: the system text apart, 'model' instead of
     'assistant', pictures as inline data – each with how sharp Gemini should look at it."""
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system" and m.get("content"))
@@ -366,7 +381,10 @@ def _google_request(messages, temperature, max_tokens, thinking):
     config = {"temperature": temperature, "topP": TOP_P}
     if max_tokens:
         config["maxOutputTokens"] = max_tokens + 800    # room for the quiet thinking, which also counts
-    if thinking:
+    if model.startswith("gemini-2"):    # 2026-11-15: the 2.x models take a thinking BUDGET (tokens), not a level
+        config["thinkingConfig"] = {"thinkingBudget": {None: 0, "minimal": 0, "low": 512, "medium": 2048,
+                                                       "high": 8192}.get(thinking, 0)}
+    elif thinking:
         config["thinkingConfig"] = {"thinkingLevel": thinking}
     if cloud["media"] == "global" and CLOUD_PICTURE_DETAIL in MEDIA_LEVELS:
         config["mediaResolution"] = "MEDIA_RESOLUTION_" + CLOUD_PICTURE_DETAIL.upper()
@@ -388,11 +406,13 @@ def cloud_brain(messages, temperature=0.9, max_tokens=None, stop=None):
     harder = None if night else getattr(think_level, "level", None)
     if harder == "wise":     # stuck: this one question goes to the wiser (night) brain
         model = NIGHT_CLOUD_BRAIN
+    elif not night and CLOUD_FALLBACK and time.time() < cloud["fallback_until"]:
+        model = CLOUD_FALLBACK  # Google was busy for his normal brain a moment ago
     thinking = NIGHT_THINKING if (night or harder == "wise") else (harder or cloud["thinking"])
     room = 5200 if night else 3000 if harder == "wise" else {"low": 1500, "medium": 3500, "high": 6000}.get(harder, 0)
     google = CLOUD_API == "google"
     if google:
-        request = _google_request(messages, temperature, max_tokens and max_tokens + room, thinking)
+        request = _google_request(messages, temperature, max_tokens and max_tokens + room, thinking, model)
         req = urllib.request.Request(CLOUD_GOOGLE_URL.format(model=model), data=json.dumps(request).encode(),
                                      headers={"Content-Type": "application/json", "x-goog-api-key": CLOUD_KEY})
     else:
@@ -428,8 +448,15 @@ def cloud_brain(messages, temperature=0.9, max_tokens=None, stop=None):
                 raise CloudProblem(f"the key was not accepted ({error.code})", wait=10 ** 9)
             if error.code == 404:
                 raise CloudProblem(f"there is no brain called {CLOUD_BRAIN} (check the name)", wait=10 ** 9)
+            if error.code in (429, 503) and not night:
+                if model == CLOUD_BRAIN and CLOUD_FALLBACK and CLOUD_FALLBACK != CLOUD_BRAIN:
+                    cloud["fallback_until"] = time.time() + CLOUD_BUSY_SWITCH
+                    print(f"☁️  (Google is busy for {model} right now ({error.code}) – {CLOUD_FALLBACK} answers for "
+                          f"the next {CLOUD_BUSY_SWITCH // 60} minutes)")
+                    return cloud_brain(messages, temperature, max_tokens, stop)
+                raise CloudProblem(f"Google is busy right now ({error.code}, {model})", wait=CLOUD_BUSY_RETRY)
             if error.code == 429:
-                raise CloudProblem("too many questions right now (the free limit?)")
+                raise CloudProblem("too many questions right now")
             raise CloudProblem(f"the cloud said {error.code}: {message[:120]}")
         except (urllib.error.URLError, socket.timeout, OSError) as error:
             if night:
@@ -526,7 +553,7 @@ def ollama(messages, temperature=0.9, max_tokens=None, stop=None):
 
 
 FIELDS = ("THOUGHT", "FEEL", "FACE", "REMEMBER", "SPEAK", "WHY", "SAY", "EXPECT", "SURPRISE", "GOAL", "DONE", "DROP", "LOOK_FOR", "HEARD", "TONE",
-          "LEARN_FACE", "MOMENT", "FEELING", "ACT", "PLACE_NOTE", "MINDFUL", "IDEA", "KEEP_PICTURE", "BODY")
+          "LEARN_FACE", "MOMENT", "FEELING", "ACT", "PLACE_NOTE", "MINDFUL", "IDEA", "KEEP_PICTURE", "BODY", "URGE")
 
 
 def field(name, answer):
@@ -671,7 +698,7 @@ def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=No
         if self_image:
             system += ("\n\nWho you have become through your own experiences (let it colour how you talk, "
                        "but you are always the small, curious duck described above):\n- " + "\n- ".join(self_image[-6:]))
-        if lessons:
+        if lessons and not LESSON_FIX:     # (2026-11-18: with LESSON_FIX a lesson only comes in a thought when it fits)
             system += ("\n\nLessons you taught yourself by looking back on earlier days:\n- " + "\n- ".join(lessons))
 
     notes = [clock_note() + "\n" + inner_state(with_goals=(not reply_to_human) if with_goals is None else with_goals)
@@ -811,9 +838,16 @@ def reply_to_event(event, human_said, fallback):
         return fallback
 
 
+NOT_SAID = "URGE|BODY|FEEL|FACE|THOUGHT|EXPECT|SURPRISE|GOAL|DONE|DROP|LOOK_FOR|TONE|MOMENT|FEELING|MINDFUL|IDEA|KEEP_PICTURE|REMEMBER|WHY|SPEAK|HEARD|LEARN_FACE"
+
+
 def clean(text):
     """Removes quotes, 'quack', emojis and explanations – and cuts to MAX_SENTENCES."""
     text = re.sub(r"(?i)\b(ACT|PLACE_NOTE)\s*:[^\n]*", "", text)  # body moves and place notes are never said out loud
+    # 2026-11-15: a smaller brain sometimes writes another field INSIDE what he says ("BODY: holding head high and
+    # bobbing eagerly There is a cute little thing!") - cut the label and its words up to the next sentence
+    text = re.sub(r"(?i:\bSAY)\s*:\s*", "", text)
+    text = re.sub(r"(?i:\b(?:" + NOT_SAID + r"))\s*:\s*[^\n]*?(?:[.!?]+(?=\s|$)|(?=\n)|(?=\s[A-Z][a-z'])|$)", " ", text)
     text = re.sub(r"\bqua+ck\w*[-!,.]*\s*", "", text, flags=re.IGNORECASE)
     text = re.sub("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️]", "", text)  # emojis
     text = re.sub(r"\*[^*]+\*|\([^)]*\)|\[[^\]]*\]", "", text)  # *does something*, (explanations), [notes]

@@ -67,7 +67,9 @@ FEELING_WORDS = {"happiness": "happy", "affection": "full of love", "nervousness
 
 JOLT_WORDS = {("happiness", 1): "very happy", ("happiness", -1): "hurt", ("affection", 1): "full of love",
               ("affection", -1): "hurt", ("nervousness", 1): "scared", ("nervousness", -1): "relieved",
-              ("playfulness", 1): "playful", ("loneliness", 1): "lonely"}
+              ("playfulness", 1): "playful", ("playfulness", -1): "subdued", ("loneliness", 1): "lonely"}
+# (2026-11-18: ("playfulness", -1) was missing, so a big DROP in playfulness fell back to the word "playful" - run 11-08
+#  13:08: "you felt playful ... when My chest feels tight and shaky because Alex is very angry")
 recent_moments = []   # (when, how strong 0–1, a feeling word or None) – how much things just moved him
 
 
@@ -80,6 +82,12 @@ def note_jolt(before, after, source="thought"):
         if abs(d) > abs(best):
             best, which = d, k
     size = min(1.0, abs(best) * 2)
+    try:                                  # (the brain view: Feelings flash with how much he was moved)
+        if size >= 0.1:
+            from anka.activity import pulse as _view_pulse
+            _view_pulse("feelings", size)
+    except Exception:
+        pass
     if size >= 0.1 or (source == "reply" and best):  # (a reply's small change still says WHICH way it moved him)
         recent_moments.append((time.time(), size, JOLT_WORDS.get((which, 1 if best > 0 else -1)), source))
         del recent_moments[:-20]
@@ -111,7 +119,8 @@ def settle_echoes(before, cause=None, now=None):
                 and not (same_way and abs(a - rest) < abs(_echo_bound(old, now) - rest)):
             echoes[k] = {"peak": a, "rest": rest, "t": now, "since": now, "half": half,      # a new big moment
                          "cause": (cause or "something happened")[:160],
-                         "word": JOLT_WORDS.get((k, 1 if a > rest else -1)) or FEELING_WORDS.get(k, k)}
+                         "word": JOLT_WORDS.get((k, 1 if a > rest else -1))
+                                 or (FEELING_WORDS.get(k, k) if a > rest else f"much less {FEELING_WORDS.get(k, k)}")}
         elif same_way and abs(a - rest) > abs(_echo_bound(old, now) - rest):
             old["peak"], old["t"] = a, now        # it grew stronger (still the same moment, e.g. 0.8 -> 0.98)
     for k, e in list(echoes.items()):

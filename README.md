@@ -91,6 +91,14 @@ When a kick knocked him over, he wrote it down as a surprise. That night it beca
 
 > 🪞 *"I like kicking the red ball, though kicking it too hard can make me fall over."*
 
+It works for feelings too. After a day when Alex went out and the room went quiet, his night wrote, by itself:
+
+> 🪞 *"I feel lonely when Alex goes out and leaves the room quiet."*
+
+On the next days alone he came back to that line again and again, and about half his thoughts were about missing Alex.
+Nobody programmed "be sad when alone": it grew from his own day, his own night and his own choices. (It was too
+strong, so the next step was to balance it, not remove it – see [STATUS](STATUS.md).)
+
 ### 🌙 He dreams about his day
 His dreams grow from the strongest moments of the day. After a day of seeing people's legs from 20 cm off the floor, he dreamt of *"a forest of giant blue trousers"*. After being shouted at, he dreamt this:
 
@@ -102,6 +110,10 @@ His dreams grow from the strongest moments of the day. After a day of seeing peo
 - He finds memories by meaning, and memories from days ago come back when they fit:
 
   > 🦆 *"The sofa is right here! I remember my red ball was near it yesterday."*
+- How he feels picks memories too: a lonely Anka is reminded of lonely moments.
+- Memories fade unless they matter: strong moments last longer, a memory gets stronger each time it comes back, and his
+  night can keep a few **forever**.
+- He gets to know his room: he is only told what is *new* today, so he stops staring at the same guitar all day.
 
 ### 🦆 He has a body that feels alive
 In Pollen's MuJoCo simulator, running the real Microduck software:
@@ -113,6 +125,13 @@ In Pollen's MuJoCo simulator, running the real Microduck software:
 ### 🎯 He predicts, gets surprised, and adapts
 Before every action he says what he expects. Afterwards he rates how surprised he was. Over three days in one life, his
 average surprise fell from 0.28 to 0.11 to 0.04, because he learned to predict his world.
+
+### 🔍 You can watch his brain at work
+A separate window shows which parts of him are busy right now – seeing, paying attention, goals, memory, moving,
+feeling, hearing – as light running in waves through a net of neurons. It only *shows* what happens; it never changes
+what he does. Click **BRAIN VIEW** in the simulator window, or press B.
+
+![The brain view: seven regions of neurons; Vision, Goals and Movement are lit](docs/images/brain_view.png)
 
 ➡️ All the numbers, and what doesn't work yet, are in **[STATUS.md](STATUS.md)**. The failures along the way are in the **[journal](docs/JOURNAL.md)**.
 
@@ -219,11 +238,15 @@ bigger model goes over the day and writes lessons, ideas and beliefs about himse
 | `ankasim/living.py` | The living body between thoughts, and the `BODY` styles |
 | `ankasim/mind.py` | His map in 3D: landmarks, floor plan, walls |
 | `ankasim/duck_link.py` | The link to the duck's own software (`robotd` JSON-RPC, depth sensor, camera) |
-| `anka/simulation.py` | Scripted test days and the room window (with a mute button) |
+| `anka/simulation.py` | Scripted test days and the room window (with a mute button and the BRAIN VIEW button) |
+| `anka/activity.py` | Notes which parts of him are busy, for the brain view (never changes what he does) |
+| `ankasim/brain_window.py` | The brain view window (OpenCV); `app/viz/index.html` is the same in a browser |
+| `ankasim/camera_model.py` | The duck's camera (the retail Microduck's by default) |
+| `anka/urge_layer.py` · `anka/assoc_layer.py` | Experiments with a small local model (wishes, memory search words) – off by default |
 | `tools/` | Test suites, the scorer (`score_run.py`), replays, small test programs |
 
 **Brains used:**
-- **Day:** `gemini-3-flash-preview`.
+- **Day:** `gemini-3.5-flash-lite` (fast and cheap; `gemini-3-flash-preview` is the fallback when Google is busy).
 - **Night and "wise" thoughts:** `gemini-4-argon`.
 - **Reserve:** Qwen3.5-4B (3-bit) in Ollama, for when the network is gone. It fits in the 8 GB of RAM that the dev machine (an M1 MacBook) has.
 - **Memory search:** `nomic-embed-text`.
@@ -354,6 +377,8 @@ Everything shows up in **one window**: the room and his floor plan on top, his c
 button. Pollen's own 3D window is off by default because it slows the simulator down (`--show-3d` turns it on).
 
 3. Optional: `tools/Anka eyes.command` opens a separate window with what the duck's camera and depth sensor see.
+4. Optional: click **BRAIN VIEW** in the window (or press B) to see which parts of him are busy. It also works on its
+   own: `tools/Anka brain window.command` (or `python ankasim/brain_window.py --demo` for a demo).
 
 The first time, run `tools/Update Pollen (0.18.9).command` once. It puts your copy of Pollen's software on the version
 Anka is tested with.

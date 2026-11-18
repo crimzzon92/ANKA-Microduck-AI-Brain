@@ -104,23 +104,30 @@ def camera_panel(link, overlay, rejected=False):
     img = cv2.resize(frame, (int(round(w * scale)), HEIGHT), interpolation=cv2.INTER_LINEAR if scale > 1 else cv2.INTER_AREA)
     tof = link.tof()
     if overlay and tof is not None:
-        # the depth sensor looks at the picture's middle square (45 x 45 degrees; the camera is 45 degrees wide)
-        side = img.shape[1]
+        # the depth sensor looks at the picture's middle (45 x 45 degrees). 2026-11-18: the camera is wider than that
+        # now (camera_model.py), so the grid covers only the part of the picture the sensor sees
+        try:
+            from . import camera_model as _CAM
+        except ImportError:
+            import camera_model as _CAM
+        t45 = math.tan(math.radians(22.5))
+        side = min(img.shape[1], img.shape[1] * t45 / math.tan(math.radians(_CAM.FOV_H / 2)))
+        x0 = (img.shape[1] - side) / 2
         y0, cell = (HEIGHT - side) // 2, side / tof["cols"]
         layer = img.copy()
         for r in range(tof["rows"]):
             for c in range(tof["cols"]):
                 d = tof["m"][r, c]
-                x1, y1 = int(c * cell), int(y0 + r * cell)
-                x2, y2 = int((c + 1) * cell), int(y0 + (r + 1) * cell)
+                x1, y1 = int(x0 + c * cell), int(y0 + r * cell)
+                x2, y2 = int(x0 + (c + 1) * cell), int(y0 + (r + 1) * cell)
                 if not math.isnan(d):
                     cv2.rectangle(layer, (x1, y1), (x2, y2), _colour(d), -1)
         img = cv2.addWeighted(layer, 0.28, img, 0.72, 0)
         for r in range(tof["rows"]):
             for c in range(tof["cols"]):
                 d = tof["m"][r, c]
-                x1, y1 = int(c * cell), int(y0 + r * cell)
-                cv2.rectangle(img, (x1, y1), (int((c + 1) * cell), int(y0 + (r + 1) * cell)), (255, 255, 255), 1)
+                x1, y1 = int(x0 + c * cell), int(y0 + r * cell)
+                cv2.rectangle(img, (x1, y1), (int(x0 + (c + 1) * cell), int(y0 + (r + 1) * cell)), (255, 255, 255), 1)
                 if not math.isnan(d):
                     _text(img, f"{d * 100:.0f}", x1 + 3, int(y1 + cell / 2 + 4), WHITE, 0.32)
     seen = what_he_finds()
@@ -220,6 +227,14 @@ def compose(link, overlay=False, rejected=False):
     return np.hstack([cam, panel])
 
 
+HELP = "w/s walk  a/d turn  space stop  i/k/j/l look  t sit  u enable  o grid  r rejected  p photo  q quit"
+
+
+def eyes_parts(link, overlay=False, rejected=False):
+    """2026-11-18: his eyes for the one window, in parts the window lays out itself (camera, numbers, key help)."""
+    return {"cam": camera_panel(link, overlay, rejected), "facts": facts(link), "help": HELP, "tof": link.tof()}
+
+
 def one_window(link):
     """Anka's ONE window (2026-11-11), as its own program so it never slows his brain down: the room picture and the
     log come from small files his program writes (see window.py), his eyes come live from the simulator."""
@@ -232,7 +247,8 @@ def one_window(link):
     pos = os.environ.get("ANKA_ROOM_POS", "")
     if "," in pos:
         cv2.moveWindow(title, *[int(float(v)) for v in pos.split(",")[:2]])
-    st = {"room": None, "room_m": 0.0, "lines": [], "log_m": 0.0, "rect": (0, 0, 0, 0), "scale": 1.0}
+    st = {"room": None, "room_m": 0.0, "lines": [], "log_m": 0.0, "rect": (0, 0, 0, 0), "brain": (0, 0, 0, 0),
+          "scale": 1.0, "ox": 0}
 
     def mute():
         try:
@@ -240,11 +256,25 @@ def one_window(link):
         except OSError:
             pass
 
+    def brain():                                         # the brain window (2026-11-18) - only when asked for
+        try:
+            try:
+                from . import brain_window
+            except ImportError:
+                import brain_window
+            brain_window.launch()
+        except Exception as error:
+            print(f"(can't open the brain window: {error})")
+
     def click(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
+            rx, ry = x / st["scale"] - st["ox"], y / st["scale"]
             x1, y1, x2, y2 = st["rect"]
-            if x1 <= x / st["scale"] <= x2 and y1 <= y / st["scale"] <= y2:
+            if x1 <= rx <= x2 and y1 <= ry <= y2:
                 mute()
+            x1, y1, x2, y2 = st["brain"]
+            if x1 <= rx <= x2 and y1 <= ry <= y2:
+                brain()
 
     cv2.setMouseCallback(title, click)
     for f in (W.LIVE_ROOM, W.LIVE_LOG, W.LIVE_INFO):        # nothing old from an earlier run
@@ -261,7 +291,9 @@ def one_window(link):
                     if img is not None:
                         st["room"], st["room_m"] = img, m
                         with open(W.LIVE_INFO) as f:
-                            st["rect"] = tuple(json.load(f).get("rect", (0, 0, 0, 0)))
+                            info = json.load(f)
+                            st["rect"] = tuple(info.get("rect", (0, 0, 0, 0)))
+                            st["brain"] = tuple(info.get("brain", (0, 0, 0, 0)))
             except (OSError, ValueError):
                 pass
             try:
@@ -271,11 +303,13 @@ def one_window(link):
                         st["lines"], st["log_m"] = f.read().splitlines(), m
             except OSError:
                 pass
-            whole, st["scale"] = W.layout(st["room"], compose(link), st["lines"])
+            whole, st["scale"], st["ox"] = W.layout(st["room"], eyes_parts(link), st["lines"])
             cv2.imshow(title, whole)
             k = cv2.waitKey(60) & 0xFF
             if k in (ord("m"), ord("M")):
                 mute()
+            if k in (ord("b"), ord("B")):
+                brain()
             if cv2.getWindowProperty(title, cv2.WND_PROP_VISIBLE) < 1:
                 break
     finally:

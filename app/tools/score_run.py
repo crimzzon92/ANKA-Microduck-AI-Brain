@@ -60,6 +60,9 @@ MEASURES = [
     ("pictures_kept", "picture memories he chose to keep"),
     ("pictures_recalled", "times an old picture memory was shown to him"),
     ("social_acts", "actions towards a person (walk to Alex, turn to you ...)"),
+    ("mood_memories", "memories that came up BECAUSE of how he felt (feelings colour memory)"),
+    ("urge_share", "share of thoughts with an inner urge (URGE, from his feelings)"),
+    ("urge_company", "share of urges that are about being with someone (close, company, cuddle, Alex ...)"),
     ("failed_share", "share of body steps that failed (stopped, not there, too high ...)"),
     ("longest_fail_streak", "longest run of failed tries at the SAME thing in a row"),
     ("stuck_streaks", "times he failed 3+ times in a row at the same thing"),
@@ -358,6 +361,11 @@ def score(path):
         s[k] = b3.get(k)
     s["pictures_kept"], s["pictures_recalled"] = end.get("pictures_kept"), end.get("pictures_recalled")
     s["social_acts"] = sum(1 for st in steps if SOCIAL.search(st["step"].lower()))
+    s["mood_memories"] = sum(len(r.get("memories") or []) for r in rows if r.get("kind") == "mood_memory")
+    urges = [t.get("urge") for t in thoughts if t.get("urge")]
+    s["urge_share"] = round(len(urges) / len(thoughts), 2) if thoughts else None
+    s["urge_company"] = (round(sum(1 for u in urges if re.search(r"(?i)\b(close|near|company|cuddle|together|with (alex|robin|someone|somebody|you|him|her)|alex|robin|friend|hug|snuggle|not alone)\b", u)) / len(urges), 2)
+                         if urges else None)
     s["failed_share"] = round(sum(1 for st in steps if not st["ok"]) / len(steps), 2) if steps else None
     longest, streaks, run, last = 0, 0, 0, None
     for st in steps:

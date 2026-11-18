@@ -7,7 +7,7 @@ import time
 import types
 from datetime import date, datetime
 
-from settings import (SIM_SOUND, BRAIN, CLOUD_BRAIN, CLOUD_KEY, CONVERSATION_MEMORY, HANDS_FREE, HAS_BODY, HEAR_WITH_CLOUD, MAX_CONVERSATIONS, NAME, OWN_LINES_MEMORY, SHORT_OUTPUT, SIM)
+from settings import (SEARCH_CONVERSATIONS, SIM_SOUND, BRAIN, CLOUD_BRAIN, CLOUD_KEY, CONVERSATION_MEMORY, HANDS_FREE, HAS_BODY, HEAR_WITH_CLOUD, MAX_CONVERSATIONS, NAME, OWN_LINES_MEMORY, SHORT_OUTPUT, SIM)
 from anka.shared import (S, answering, awake, cv2, heard, listening, state, timings, to_remember, unsure_words, wake, wants_to_say)
 
 
@@ -59,6 +59,8 @@ def main():
     state["woke_up"] = time.time()
     thinker = threading.Thread(target=think_loop, daemon=True)
     thinker.start()
+    from anka.urge_layer import start as start_feeling_layer
+    start_feeling_layer()     # (2026-11-15: the small local model that turns his feelings into a wish)
 
     try:
         camera = None if SIM else find_camera()
@@ -234,7 +236,8 @@ def main():
 
             # Anka speaks first – everything else (saving, remembering) waits until the voice is going
             timings["reply"].append(time.time() - asked_at)
-            print(f"🦆 {answer}" + (f"   ⏱️ {timings['reply'][-1]:.1f}s" if not SHORT_OUTPUT or SIM else ""))
+            if answer:     # (2026-11-15: an empty answer is not printed as an empty line)
+                print(f"🦆 {answer}" + (f"   ⏱️ {timings['reply'][-1]:.1f}s" if not SHORT_OUTPUT or SIM else ""))
             if answer and not listening.is_set():
                 say(answer)
                 state["said"] = (state["said"] + [(now, answer)])[-20:]
@@ -264,7 +267,7 @@ def main():
                 conversations.append(entry)
                 if not any(t >= asked_at and src == "reply" for t, _, _, src in recent_moments):
                     state["unrated"] = (time.time(), entry)  # the brain forgot to say how it felt – his next thought tells
-                del conversations[:-MAX_CONVERSATIONS]
+                trim_weakest(conversations, MAX_CONVERSATIONS, SEARCH_CONVERSATIONS)   # (2026-11-18: the weakest old line goes)
                 save_memory()
             # gone through when you pause – so answers are faster
             to_remember.put((human_said, answer, speaker, feel, felt, own_feeling))
@@ -297,7 +300,7 @@ def main():
 from anka.resources import LazyModel, heavy, unload_loop
 from anka.feelings import feel_now, feelings, feelings_lock, hold_frozen_feelings, moment_strength, recent_moments, strong_feeling
 from anka.trace import trace
-from anka.memory import (ago, conversations, facts, forget_everything, human_name, load_feeling_vectors, load_memory, load_vectors, memory_lock, move_old_memory_files, own_said, room_of, save_memory, save_now, saver_loop, sort_into_rooms)
+from anka.memory import (ago, conversations, facts, forget_everything, trim_weakest, human_name, load_feeling_vectors, load_memory, load_vectors, memory_lock, move_old_memory_files, own_said, room_of, save_memory, save_now, saver_loop, sort_into_rooms)
 from anka.brain import ask_brain, clean, means_same, memories_shown, reply_to_event, too_similar
 from anka.night import sleep_and_dream
 from anka.eyes import (asks_about_sight, brief_scene, camera_frames, current_speaker, find_camera, picture_for_reply, scene_without_picture, speaker_note, update_sight)

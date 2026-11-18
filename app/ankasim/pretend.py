@@ -29,7 +29,11 @@ except ImportError:
     import room_layout as R
 
 CAM_H = 0.20            # his eyes are about 20 cm above the floor
-FOV_H, FOV_V = 45.0, 73.0
+try:                                # 2026-11-18: the angles come from camera_model.py (the retail duck: about 85 x 55)
+    from . import camera_model as _CAM
+except ImportError:
+    import camera_model as _CAM
+FOV_H, FOV_V = _CAM.FOV_H, _CAM.FOV_V
 MAX_RANGE = 5.0
 MIN_RANGE = 0.25
 CLOSE_RANGE = 0.04        # the colour finder sees the ball / sock this close (looking down at his feet)
@@ -137,7 +141,7 @@ MAX_RATIO = {"ball": 3.5, "sock": 14.0}  # how wide compared to high a blob may 
 
 
 def find_by_colour(frame, cam_pitch_deg=0.0, rng=random):
-    """frame: the camera picture (BGR, upright: 45 degrees wide, 73 tall). Returns [(name, "thing", bearing_deg (+ left),
+    """frame: the camera picture (BGR, upright: FOV_H wide, FOV_V tall - see camera_model.py). Returns [(name, "thing", bearing_deg (+ left),
     distance_m)] for the ball and the sock if they are in the picture. The distance comes from where the thing touches the
     floor in the picture (the camera is CAM_H above the floor and tilted cam_pitch_deg), like the brain is told it can."""
     if cv2 is None or frame is None or frame.size == 0:

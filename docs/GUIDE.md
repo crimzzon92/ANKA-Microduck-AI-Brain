@@ -202,13 +202,19 @@ comes with the answer, not with the next thought.
 | Conversations | With who said what, and what he felt. |
 | Picture memories | Small JPEGs he chose to keep (at most 40). |
 | Places | Where things are in the room, in words ("the guitar – by the bookshelf"), kept between days. |
+| Familiarity | What he has seen and when. He is told only what is new today; the rest "you know well". |
+
+- **Strength:** every memory fades with a half-life of 7 days × its strength. Strong moments start stronger, and each
+  time a memory comes up it gets stronger. When memory is full, the weakest goes first. Memories marked
+  **⭐ kept forever** (up to 2 a night) never fade and are never removed.
+- **Mood:** how he feels is part of the search, so feelings colour what comes back.
 
 ### The night (`anka/night.py`, model: `NIGHT_CLOUD_BRAIN`)
 
-1. **Review:** mistakes are judged only from what the day showed. A memory is forgotten only if another memory proves it wrong.
+1. **Review:** mistakes are judged only from what the day showed, including what his body really did. A memory is forgotten only if another memory proves it wrong; a missing report is never proof.
 2. **Tidying:** facts are merged, corrected and sorted.
 3. **Re-feeling:** the strongest moments are felt again, so a hurt can soften overnight.
-4. **Self-image and lessons:** written from his body's track record (what he really managed, not what he hoped). Also up to 2 **untested ideas** for the next day.
+4. **Self-image and lessons:** written from his body's track record (what he really managed, not what he hoped). Lessons are written as experiences in their situation ("When …, …"), never as orders, and are shown the next day only when they fit the moment. Also up to 2 **untested ideas** for the next day, and up to 2 memories to keep forever.
 5. **Dream:** built from the day's strongest moments and the pictures he kept.
 
 ### The body
@@ -238,6 +244,10 @@ anything; it only moves the head, the body pose, the beak and small foot turns. 
 3. Windows:
    - **"Anka's room"**, the room from above. Top right is a **mute button** for his voice and duck sounds (click it, or press **M**). Bottom left says what moves his body right now: orange for one of Pollen's animations, blue for the living body following his `BODY` words.
    - **"Anka eyes"** (`tools/Anka eyes.command`): his camera, the depth grid, the IMU, and keys to drive him by hand.
+   - **"ANKA brain"** (the **BRAIN VIEW** button next to mute, or press **B**): which parts of him are busy, as light
+     waves through a net of neurons. It never opens by itself. Keys: D = demo, Q = close. It reads `viz/activity.json`,
+     which Anka writes a few times a second; it never changes what he does. `tools/Anka brain window.command` starts it
+     on its own; `tools/Anka brain view.command` opens the same picture in a browser.
 4. Afterwards the log, map and thought trace are in `test_logs/`. The end of the log has a report on his body: how still he stood, his map error, kicks, sounds, emotions.
 
 Small test programs, to run with the simulator on and Anka off:
@@ -283,6 +293,12 @@ python tools/score_run.py --compare shout --since 2026-11-08
 | `twodays` / `nextday` | Several days in one life |
 | `transfer` / `balltransfer` | Experience vs a fresh life |
 | `wise` | With vs without the wiser brain |
+| `mood` / `moodlife` | With vs without feelings colouring memory |
+| `urge` / `localurge` | Inner wish in the same answer / from a small local model |
+| `familiar` | Getting to know things over 3 days, with vs without |
+| `lessons` | Lessons as experiences, with vs without, 3 days |
+| `assoc` | Memory search words from a small local model |
+| `restless` | Restlessness, 3 days alone |
 
 Each run costs $0.07–0.25.
 
@@ -300,12 +316,16 @@ Each run costs $0.07–0.25.
 | `HABIT_STRENGTH`, `HABIT_FADE` | How quickly a repeated memory loses its pull. |
 | `ECHO_HALF_LIFE` | How long big feelings linger. |
 | `WISE_WHEN_STUCK`, `STUCK_AFTER` | The wiser brain. |
+| `CLOUD_FALLBACK` | Another cloud model when Google is busy. |
+| `MEMORY_HALF_DAYS`, `MEMORY_PERMANENT` | How fast memories fade; memories kept forever. |
+| `LAST_WORDS_FOR` | How long the human's last words stay in his thoughts when he is alone. |
+| `URGE_MODE`, `ASSOC_SEARCH` | The small local model experiments (off by default). |
 | `SCENARIOS` | The scripted test days. Write your own here. |
 
 ## 10. What it costs
 
 - **Normal use** with the cloud brain: roughly $0.25 an hour.
-- **A 17-minute 3D test day:** about $0.25 (the camera picture is sent with every thought).
+- **A 17-minute 3D test day:** about $0.12 with `gemini-3.5-flash-lite` (the camera picture is sent with every thought).
 - **A night:** about $0.02.
 
 The log prints a 💰 line after each simulation with the exact cost.

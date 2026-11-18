@@ -40,7 +40,11 @@ except ImportError:
 
 STATE_DIR = os.environ.get("DUCK_SIM_STATE", os.path.expanduser("~/.cache/duck-sim"))
 TOF_VALID = (5, 9)           # ST's two "valid" status codes (255 = nothing in range)
-CAMERA_TURN = "cw"           # the simulator's frames come out on their side: turning them clockwise puts them upright
+try:                        # 2026-11-18: which head camera (camera_model.py) - the retail duck's comes out upright
+    from . import camera_model as _CAM
+except ImportError:
+    import camera_model as _CAM
+CAMERA_TURN = _CAM.TURN      # "cw": the prototype-style frames come out on their side - turning them clockwise puts them upright
 SIZES = ((640, 360), (320, 180), (160, 90), (1280, 720), (960, 540), (480, 270), (1920, 1080))
 
 
