@@ -55,6 +55,16 @@ March 2027), I'll test it on the real thing and report what works and what doesn
 
 This repository is updated often. Expect things to change, break and get better. Ideas, questions and issues are welcome.
 
+## Progress (November 2026)
+
+![Alone: metres walked per day and share of time standing still, eight steps from Nov 4 to Nov 19](docs/progress/2026-11-19/alone_activity.png)
+
+- Alone for three days he now walks **18.7 m a day** (was 7.7 m) and stands still 36 % of the time (was 67 %).
+- He stays put when Alex asks him to – and says so truthfully afterwards.
+- The kick is still weak: lined up 5 of 28 tries (was 1 of 55).
+
+➡️ **[Full progress report](docs/progress/2026-11-19.md)** – all monthly reports are in [docs/progress/](docs/progress/).
+
 ## What he can do
 
 Nobody tells Anka what to do. Nothing in the code scripts his behaviour, and there is no "if X then do Y". Every few seconds he looks, thinks, feels and

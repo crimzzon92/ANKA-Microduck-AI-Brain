@@ -1,0 +1,8 @@
+date,runs,cost_usd,thought_s,brain
+2026-11-10,6,0.26,11.65,gemini-3-flash-preview
+2026-11-11,4,0.24,10.95,gemini-3-flash-preview
+2026-11-12,3,0.25,11.1,gemini-3-flash-preview
+2026-11-13,3,0.17,16.33,gemini-3-flash-preview
+2026-11-15,2,0.26,11.35,gemini-3.6-flash (trial)
+2026-11-16,1,0.21,8.1,gemini-3.5-flash-lite
+2026-11-18,1,0.17,7.0,gemini-3.5-flash-lite

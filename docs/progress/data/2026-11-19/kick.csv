@@ -1,0 +1,6 @@
+round,date,tries,lined_up,lost_in_approach
+Before fixes,2026-11-16,55,1,5
+Fix 1+2,2026-11-17,20,2,4
+Fix 3,2026-11-17,27,2,8
+Fix 4,2026-11-17,22,4,6
+Fix 5,2026-11-18,28,5,0

@@ -1,0 +1,9 @@
+step,date,label,setup,walked_m,still_pct,lines_to_self,happiness,loneliness,boredom,source
+1,2026-11-04,first measured,"1 day alone, 2 runs",11.8,17,14.5,0.61,0.72,0.15,scores.csv alone 11-04
+2,2026-11-08,less talk to himself,"1 day alone, 4 runs",17.6,32,4.8,0.51,0.72,0.18,scores.csv alone 11-08
+3,2026-11-15,new day brain,"1 day alone, 9 runs",17.1,50,0.1,0.42,0.76,0.43,scores.csv alone 11-15
+4,2026-11-18,lessons as experiences,"3 days alone, 6 runs",7.7,67,0,0.34,0.84,0.6,suite lessons 11-18 15:11
+5,2026-11-18,+ restlessness,"3 days alone, 6 runs",10.7,62,0,0.24,0.89,0.61,suite restless 11-18 20:00
+6,2026-11-18,+ last words 2 min,"3 days alone, 6 runs",17.2,49,0,0.25,0.86,0.57,suite restless 11-18 20:54
+7,2026-11-18,"+ tap, curiosity","3 days alone, 6 runs",17.8,39,0,0.22,0.87,0.59,suite drives 11-18 22:35
+8,2026-11-19,without base mood,"3 days alone, 6 runs",18.7,36,0.2,0.29,0.86,0.52,suite basemood 11-19 (without)

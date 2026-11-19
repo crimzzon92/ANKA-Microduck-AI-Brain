@@ -1,0 +1,5 @@
+group,mean_s,max_s,source
+Before tap,91,139,suite restless 11-18 20:54
+With tap,51,84,suite drives 11-18 22:35
+"Nov 19, base mood",47,87,suite basemood (with)
+"Nov 19, no base mood",52,85,suite basemood (without)
