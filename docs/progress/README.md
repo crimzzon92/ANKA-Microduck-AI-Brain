@@ -6,4 +6,4 @@ the charts: `python docs/progress/make_charts.py <date>`.
 
 | Date | Report | Highlights |
 |---|---|---|
-| 2026-11-19 | [November 2026](2026-11-19.md) | Alone for 3 days: 7.7 → 18.7 m a day. Stays put when asked. Kick 1 of 55 → 5 of 28. |
+| 2026-11-19 | [November 2026](2026-11-19.md) | 26 things he can do. Alone for 3 days: 7.7 → 18.7 m a day. Stays put when asked. Kick 1 of 55 → 5 of 28. |

@@ -159,7 +159,83 @@ def volume():
     save(fig, "test_volume.png")
 
 
+def overview():
+    """The whole development on one timeline: what he can do (top) and three key measures (bottom)."""
+    import datetime as dt
+    import matplotlib.dates as mdates
+    P = lambda d: dt.datetime.strptime(d[:10], "%Y-%m-%d")
+    ab = rows("abilities.csv")
+    start, end = dt.datetime(2026, 10, 25), dt.datetime(2026, 11, 21)
+    days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
+    areas = [("brain", "thinking & feeling", C1), ("memory", "memory & learning", C3), ("body", "body & senses", C2)]
+    counts = {a: [sum(1 for r in ab if r["area"] == a and P(r["date"]) <= d) for d in days] for a, _, _ in areas}
+    fig = plt.figure(figsize=(10, 7.2))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.55, 1], hspace=0.42, wspace=0.28)
+    ax = fig.add_subplot(gs[0, :])
+    ax.stackplot(days, [counts[a] for a, _, _ in areas], labels=[l for _, l, _ in areas], colors=[c for _, _, c in areas],
+                 alpha=0.85, step="post")
+    total = [sum(v) for v in zip(*counts.values())]
+    ax.set_xlim(start, end)
+    ax.set_ylim(0, max(total) * 1.45)
+    ax.set_ylabel("things he can do")
+    marks = [("2026-10-28", "brain starts"), ("2026-10-29", "2D body"), ("2026-11-02", "3D simulator"),
+             ("2026-11-08", "feelings linger,\nsurprise"), ("2026-11-10", "living body,\non GitHub"),
+             ("2026-11-11", "first kick"), ("2026-11-18", "memory & lessons\n(v0.3.0)"), ("2026-11-19", "taps, listens")]
+    lift = [12, 34, 12, 40, 14, 44, 14, 44]          # (points above the line - staggered so labels never meet)
+    side = [0, 0, 0, -18, 6, 10, -12, 0]
+    for i, (d, label) in enumerate(marks):
+        x = P(d)
+        y = total[(x - start).days]
+        ax.annotate(label, (x, y), xytext=(side[i], lift[i]), textcoords="offset points", ha="center", fontsize=8,
+                    arrowprops=dict(arrowstyle="-", color="#999", lw=0.8))
+    ax.text(end, total[-1], f"  {total[-1]}", va="center", fontsize=11, fontweight="bold")
+    ax.legend(loc="upper left", fontsize=8, frameon=False)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %-d"))
+    ax.set_title("Anka's development so far – what he can do, and how well (all in simulation)", loc="left", fontsize=12)
+    ax.text(1.0, -0.13, "next: the real Microduck, expected around March 2027 →", transform=ax.transAxes, ha="right",
+            fontsize=8, color="#666")
+
+    def small(pos, xs, ys, title, ylim, fmt, color=C1, note=None):
+        a = fig.add_subplot(gs[1, pos])
+        a.plot(xs, ys, "-o", color=color, ms=4)
+        a.set_xlim(dt.datetime(2026, 11, 3), end)
+        a.set_ylim(*ylim)
+        a.xaxis.set_major_locator(mdates.DayLocator(bymonthday=[5, 12, 19]))
+        a.xaxis.set_major_formatter(mdates.DateFormatter("%b %-d"))
+        a.tick_params(labelsize=8)
+        a.set_title(title, loc="left", fontsize=9)
+        a.annotate(fmt(ys[0]), (xs[0], ys[0]), xytext=(-4, 6), textcoords="offset points", ha="right", fontsize=8)
+        a.annotate(fmt(ys[-1]), (xs[-1], ys[-1]), xytext=(4, 6), textcoords="offset points", fontsize=8, fontweight="bold")
+        if note:
+            a.text(0.02, 0.04, note, transform=a.transAxes, fontsize=7, color="#666")
+
+    st = rows("alone_steps.csv")
+    seen = {}
+    xs = []
+    for r in st:                                     # several steps on one day: spread them over that day
+        n = seen.get(r["date"], 0)
+        seen[r["date"]] = n + 1
+        xs.append(P(r["date"]) + dt.timedelta(hours=12 + 3 * n))
+    small(0, xs, [float(r["walked_m"]) for r in st], "Walked per day when alone (m)", (0, 25), lambda v: f"{v:g}",
+          note="from Nov 18: 3 days alone (harder)")
+    k = rows("kick.csv")
+    seen, xs = {}, []
+    for r in k:
+        n = seen.get(r["date"], 0)
+        seen[r["date"]] = n + 1
+        xs.append(P(r["date"]) + dt.timedelta(hours=6 + 6 * n))
+    small(1, xs, [100 * int(r["lined_up"]) / int(r["tries"]) for r in k], "Kick lined up with the ball (%)", (0, 25),
+          lambda v: f"{v:.0f}%")
+    m = rows("days_3d.csv")
+    small(2, [P(r["date"]) for r in m], [float(r["map_error_cm"]) for r in m], "Own map error after a 3D day (cm)",
+          (0, 33), lambda v: f"{v:g}", note="lower is better")
+    os.makedirs(OUT, exist_ok=True)
+    fig.savefig(os.path.join(OUT, "overview.png"), facecolor="white", bbox_inches="tight")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
+    overview()
     alone()
     stuck()
     kick()

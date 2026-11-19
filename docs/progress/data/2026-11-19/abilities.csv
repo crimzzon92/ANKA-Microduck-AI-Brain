@@ -1,0 +1,27 @@
+date,id,ability,area
+2026-10-28,think,Thinks on his own,brain
+2026-10-28,feel,Feelings,brain
+2026-10-28,remember,Memory by meaning,brain
+2026-10-28,dream,Night review and dreams,brain
+2026-10-29,walk2d,Walks and looks in a 2D room,body
+2026-10-29,errand,Runs errands (fetch the sock),body
+2026-10-29,senses,Camera and depth sensor senses,body
+2026-10-30,places,Remembers where things are,memory
+2026-11-01,map,Builds his own map,body
+2026-11-02,mujoco,Body in Pollen's 3D simulator,body
+2026-11-08,echo,Feelings that linger,brain
+2026-11-08,expect,Expects and gets surprised,brain
+2026-11-08,wise,Thinks harder when stuck,brain
+2026-11-08,selfimage,Self-image from what his body did,memory
+2026-11-10,living,Body alive between thoughts,body
+2026-11-10,voice,"Voice, sounds and emotions in 3D",body
+2026-11-10,pictures,Picture memories,memory
+2026-11-11,kick,Kicks the ball,body
+2026-11-15,moodmem,Feelings colour what he remembers,memory
+2026-11-18,strength,Memories fade unless they matter,memory
+2026-11-18,forever,Memories kept forever,memory
+2026-11-18,familiar,Knows what is new today,memory
+2026-11-18,lessons,Lessons as experiences,memory
+2026-11-18,restless,Restless when nothing happens,brain
+2026-11-19,tap,Taps things with his beak,body
+2026-11-19,curious,Curious about places not visited,brain

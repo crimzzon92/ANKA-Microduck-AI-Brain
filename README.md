@@ -57,8 +57,9 @@ This repository is updated often. Expect things to change, break and get better.
 
 ## Progress (November 2026)
 
-![Alone: metres walked per day and share of time standing still, eight steps from Nov 4 to Nov 19](docs/progress/2026-11-19/alone_activity.png)
+![Anka's development so far: what he can do over time, and three key measures](docs/progress/2026-11-19/overview.png)
 
+- He can do **26 things** after four weeks of building – from thinking and feeling to tapping a guitar with his beak.
 - Alone for three days he now walks **18.7 m a day** (was 7.7 m) and stands still 36 % of the time (was 67 %).
 - He stays put when Alex asks him to – and says so truthfully afterwards.
 - The kick is still weak: lined up 5 of 28 tries (was 1 of 55).
