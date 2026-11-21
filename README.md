@@ -261,6 +261,12 @@ bigger model goes over the day and writes lessons, ideas and beliefs about himse
 - **Night and "wise" thoughts:** `gemini-4-argon`.
 - **Reserve:** Qwen3.5-4B (3-bit) in Ollama, for when the network is gone. It fits in the 8 GB of RAM that the dev machine (an M1 MacBook) has.
 - **Memory search:** `nomic-embed-text`.
+- **A possible local brain (more tests needed):** Qwen3.8 27B (dense). Tried twice in the 2D simulator as the *whole*
+  brain, day and night, through OpenRouter. On the latest version he found the sock and brought it to the human, at
+  about 3 s per thought and about the same cost as Gemini – but he was slower at the task than with Gemini, once said
+  he was handing the sock over before he got there, and the nightly reflection was thinner. Not run locally yet. Rough
+  needs to run it on your own computer: about 32–48 GB of unified memory (Mac) or a 24 GB graphics card. Fine-tuning it
+  on Anka's own good runs might make it fit him better – not tried yet.
 
 ## Quick start
 

@@ -107,6 +107,8 @@ The work goes on in the simulator until the real duck arrives, and this reposito
 7. **A better transfer test:** does experience beat common sense in a new situation?
 8. **Tidy the code:** split the big files, and share more between the 2D and 3D bodies.
 9. **Flowing conversation** with a live voice model, where he can be interrupted.
+10. **A local brain:** test Qwen3.8 27B (dense) more – two runs so far look promising – then run it locally on a bigger
+    computer, and maybe fine-tune it on Anka's own best runs.
 
 **When the real duck arrives** (expected around March 2027):
 - Run `ankasim/simbody.py` against the real robot: the same JSON-RPC calls, a real camera, a real depth sensor.
