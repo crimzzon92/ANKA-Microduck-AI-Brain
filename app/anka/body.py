@@ -13,7 +13,9 @@ import numpy as np
 
 import random
 
+from settings import SHORT_MAP, LOOK_FIRST
 from settings import BODY, BODY_SENSES, HEAR_DIRECTION, MUJOCO, NAME
+from settings import TAP_SKILL, CHAIN_ON
 CAM_H_ = 0.20   # (his eyes' height – the same as in body_view)
 from anka.shared import S, cv2, state
 
@@ -1957,9 +1959,13 @@ class RealSensesBody(VirtualBody):
             else:
                 where = None
             where = where or ("right here" if d < 0.3 else f"{_about(d)} {_side(rel)}") + (
-                f" [{abs(rel):.0f}° to your {'left' if rel > 0 else 'right'}]" if abs(rel) > 12 else "")
-            parts.append(f"{label} – {where} ({'heard' if m.get('heard') else 'seen'} {ago_(m['t'])}"
-                         + (", not there when you looked that way again" if m.get("gone_at") else "") + ")")
+                f" [{abs(rel):.0f}° to your {'left' if rel > 0 else 'right'}]" if abs(rel) > 12 and not SHORT_MAP else "")
+            when_ = f"{'heard' if m.get('heard') else 'seen'} {ago_(m['t'])}"
+            gone_ = ", not there when you looked that way again" if m.get("gone_at") else ""
+            if SHORT_MAP and when_ == "seen just now" and not gone_:   # (2026-11-20: the words already say where - shorter)
+                parts.append(f"{label} – {where}")
+            else:
+                parts.append(f"{label} – {where} ({when_}{gone_})")
         notes = []
         for pos, text, t in self.place_notes[-4:]:
             d, rel = self._from_me(pos)
@@ -2097,7 +2103,9 @@ class RealSensesBody(VirtualBody):
             lines.append("[Your mental map (rough, from your own step counting): " + "; ".join(parts) + ".]")
         if notes:
             lines.append("[Your own notes about places: " + "; ".join(notes) + ".]")
-        usual = [f"the {k} – {v['where']}" + ("" if v.get("date") == date.today().isoformat() else f" (seen {v.get('date')})")
+        from anka.memory import days_ago
+        usual = [f"the {k} – {v['where']}" + ("" if v.get("date") == date.today().isoformat() else
+                 f" (seen {days_ago(v.get('date')) if LOOK_FIRST else v.get('date')})")
                  for k, v in places.items() if k not in self.mind_map and k != self.holding]
         if usual:
             lines.append("[Where things were when you last saw them (they may have been moved): " + "; ".join(usual) + ".]")
@@ -2517,8 +2525,15 @@ class RealSensesBody(VirtualBody):
         return found
 
     def _walk_to_usual(self, name):
-        """He hasn't seen it today, but remembers where it was: he goes to that landmark and looks there."""
+        """He hasn't seen it today, but remembers where it was: he goes to that landmark and looks there.
+        (LOOK_FIRST, 2026-11-20: he is not walked there silently any more - the body gives the facts and the options.)"""
         near = places[name]["near"]
+        first = ""
+        if LOOK_FIRST:   # (2026-11-20 v2: look around where he stands FIRST, then walk - like a person asked for something)
+            if self._look_for(name) and self._visible(name)[0]:
+                last, ok = self._walk_to(name)
+                return f"looked left and right from where you stand and spotted the {name} – you {last}", ok
+            first = f"looked left and right from where you stand – no {name} in sight; then "
         if self._visible(near)[0]:
             text, ok = self._walk_to(near)
         elif near in self.mind_map or near in self.landmarks:
@@ -2528,7 +2543,7 @@ class RealSensesBody(VirtualBody):
         else:
             return (f"the {name} was {places[name]['where']} last time, but you don't know where the {near} is from "
                     f"here – look around to find the {near}", False)
-        text = f"went to look {places[name]['where']}, where the {name} was last time: " + text
+        text = first + f"went to look {places[name]['where']}, where the {name} was last time: " + text
         if not self._visible(name)[0] and self._look_for(name):
             text += f" – looked left and right and spotted the {name}"
         if self._visible(name)[0]:
@@ -2637,6 +2652,7 @@ class RealSensesBody(VirtualBody):
                     result = f"turned towards where {wanted}'s voice came from"
                 else:
                     result, ok = f"you don't know where {wanted or 'that'} is – you can't see or hear it", False
+                    self.did_nothing = True   # (2026-11-21 CHAIN_ON: the body didn't move - a chain may go on)
             else:
                 deg = n if n is not None else 90
                 deg = -deg if "right" in a else deg
@@ -2750,6 +2766,8 @@ class RealSensesBody(VirtualBody):
                     else:
                         self.holding = name
                         result = pre + f"picked up the {name} with your beak"
+        elif TAP_SKILL and re.search(r"\b(tap|peck at|peck the|pluck|strum|poke|nudge|knock on|touch)\b", a):
+            result, ok = self._tap(a)
         elif re.search(r"\b(put down|drop|let go|give)\b", a):
             if not self.holding:
                 result, ok = "you aren't holding anything", False
@@ -2775,11 +2793,73 @@ class RealSensesBody(VirtualBody):
         else:
             result, ok = (f"your body doesn't know how to '{act}' – what your body CAN do: walk, step left/right, turn, "
                           "look (left, right, up, down, around), sit, stand, kick a ball, pick up one small thing with your "
-                          "beak, put it down, explore"), False   # (2026-11-09: facts about his body)
+                          "beak, put it down, " + ("tap a thing with your beak, " if TAP_SKILL else "") + "explore"), False
         self.actions.append((act, result))
         self._key()
         self.remember_view()
+        self.mark_near()
         return result, ok
+
+    # ---------- 2026-11-18: tapping with the beak, and where he has been today ----------
+    TAP_SOUNDS = {      # what really happens when a little beak taps it (the room's physics - facts, not advice)
+        "guitar": ["the strings gave a soft, low twang that hummed for a moment",
+                   "one string buzzed with a deep, wobbly note, and the wood hummed under your beak",
+                   "the strings jangled together and the sound faded slowly"],
+        "ball": ["the ball wobbled and rolled a few centimetres away", "the ball gave a hollow little bonk and rolled a bit"],
+        "sock": ["soft – it made no sound at all, and the sock just squashed a little"],
+    }
+
+    def _tap(self, a):
+        word = re.sub(r"\b(tap|peck at|peck the|peck|pluck|strum|poke|nudge|knock on|touch|play|with|my|your|beak|at|on|it)\b",
+                      " ", a)
+        name = self._find(word) or ("guitar" if re.search(r"\bstrings?\b", a) else None)
+        t = self.things.get(name) if name else None
+        if not t:
+            return f"there's nothing like that to tap here", False
+        if t.get("on"):
+            return f"the {name} is up on the {t['on']} – too high for your beak", False
+        d = math.hypot(t["pos"][0] - self.x, t["pos"][1] - self.y)
+        rel = _wrap(_angle_to(t["pos"][0] - self.x, t["pos"][1] - self.y) - self.heading)
+        pre = ""
+        if d > 0.5 or abs(rel) > 40:
+            if name not in self.seen_names(15):
+                return f"you can't see the {name} right now – find it first", False
+            walked, ok = self._walk_to(name)
+            d = math.hypot(t["pos"][0] - self.x, t["pos"][1] - self.y)
+            rel = _wrap(_angle_to(t["pos"][0] - self.x, t["pos"][1] - self.y) - self.heading)
+            if d > 0.5 or abs(rel) > 40:
+                return walked + f" – but the {name} isn't within reach of your beak yet", False
+            pre = walked + ", then " if walked else ""
+        sounds = self.TAP_SOUNDS.get(name) or [f"a small dull tock – nothing else happened"]
+        if name == "ball":
+            rad = math.radians(self.heading)
+            nx, ny = t["pos"][0] + 0.06 * math.cos(rad), t["pos"][1] + 0.06 * math.sin(rad)
+            if 0.12 < nx < ROOM_W - 0.12 and 0.12 < ny < ROOM_H - 0.12:
+                t["pos"] = (nx, ny)
+        self.taps = getattr(self, "taps", 0) + 1
+        return pre + f"tapped the {name} with your beak – " + random.choice(sounds), True
+
+    def mark_near(self):
+        """What he has been close to today (for CURIOSITY): within 0.7 m of a thing, or of the nearest edge of furniture."""
+        near = getattr(self, "near_today", None)
+        if near is None:
+            near = self.near_today = set()
+        for name, (x, y, kind) in self._positions().items():
+            if kind == "person":
+                continue
+            if kind == "furniture":
+                try:
+                    x, y = self._nearest_point(name)[:2]
+                except Exception:
+                    pass
+            if math.hypot(x - self.x, y - self.y) < 0.7:
+                near.add(name)
+
+    def not_near_today(self):
+        """Things he KNOWS are in the room (on his own mental map) that he hasn't been close to today."""
+        near = getattr(self, "near_today", set())
+        return [n for n, m in self.mind_map.items()
+                if m.get("kind") != "person" and n not in self.people and n not in near and n != self.holding]
 
     # ---------- the window: the room from above + what he sees + the depth sensor ----------
     def draw(self, scale=100, caption=(), bubbles=(), live=True):
@@ -2946,7 +3026,8 @@ def run_act(text):
         text = re.sub(r"(?i)\b(you|me|him|her|the human)\b", voice[1], text)
     steps = [s.strip(" .") for s in re.split(r"(?i)\s*(?:,?\s*\bthen\b|,?\s*\band then\b|;|\n)\s*", text) if s.strip(" .")][:3]
     done, log = [], []
-    for step in steps:
+    for i, step in enumerate(steps):
+        body.did_nothing = False
         result, ok = body.do(step)
         if result is None:
             continue
@@ -2954,13 +3035,21 @@ def run_act(text):
         log.append({"step": step, "result": result, "ok": bool(ok)})
         print(f"🦶 ({NAME}: {step} → {result})")
         if not ok:
+            # (2026-11-21 CHAIN_ON: a step that failed without the body doing anything doesn't stop the rest)
+            if CHAIN_ON and getattr(body, "did_nothing", False) and i < len(steps) - 1:
+                continue
             break
     record_tries(log)   # B2: remembered for "what you tried lately"
+    try:                # (2026-11-19: the working memory's "since then your body ..." facts)
+        from anka.working_memory import note_moves
+        note_moves(log)
+    except Exception:
+        pass
     if done:
         state["last_move"] = (time.time(), "; ".join(done))
         # (for his thinking pace: only REAL moving counts as "on the move" – looking, sitting and standing don't.
         #  Before 2026-11-09 a "look up" also put him in the fast 4-6 s pace, so he was almost always in it.)
-        if any(re.search(r"(?i)\b(walk|step|turn|explore|kick|pick up|put down|drop|get up|go|come|move|waddle|run)\b", x["step"])
+        if any(re.search(r"(?i)\b(walk|step|turn|explore|kick|pick up|put down|drop|get up|go|come|move|waddle|run|tap)\b", x["step"])
                and not re.match(r"(?i)\s*(look|turn your head|tilt)", x["step"]) for x in log):
             state["last_travel"] = time.time()
         state["caption"] = done[-1]

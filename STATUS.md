@@ -1,6 +1,6 @@
 # Status – what works, how well, and what's next
 
-*Last updated: 18 November 2026.*
+*Last updated: 21 November 2026 (v0.4.0).*
 
 Everything below was measured in simulation: the 2D room and Pollen's MuJoCo simulator. **Nothing has run on a real
 Microduck yet**, so treat every number as "works in the simulator". Most comparisons are 3 runs against 3 runs, so a
@@ -30,6 +30,12 @@ This page is the current state. The history, including the experiments that fail
 | **Feelings colour what he remembers** (2026-11-15) | How he feels also picks which memories come up (lonely → lonely memories). Alone, he walked 9.7–12.5 m with it against 2.3–8.8 m without (no overlap, 3 vs 3). In the longer life tests the difference was mixed. On by default (`--no-mood-memory` turns it off). |
 | **Restless when nothing happens** (2026-11-18) | A fact line, not an order: how long he has been still with nothing new. Off/on: `--no-restless`. |
 | **The human's last words fade** (2026-11-18) | When Alex leaves, his goodbye is shown in Anka's thoughts for 2 minutes instead of 30. Together with restlessness, 3 days alone: walked **17.2 m a day** (still 49 % of the time), against 7.7 m (still 67 %) before both. He no longer gives up after day 1. Restlessness itself fired in only 0–11 % of his thoughts, so most of the gain is this fix. |
+| **Keeps a promise in mind – working memory** (2026-11-19) | A second, short memory layer next to the long-term one: what he has agreed to or promised right now. *He* decides what goes in (`HOLD:`) and when to let go (`LETGO:`). It is shown in every thought together with what his body has done since ("Since then your body: walked 2.4 m to the window"). Asked to sit and stay while Alex was out for 5 or 20 minutes: he held it in 4 of 4 runs, never walked off, and told the truth afterwards. Before: he wandered off in 3 of 4 long waits and twice said he had stayed. Short errands didn't need it (he didn't hold them, and nothing changed). `--no-working-memory` turns it off. |
+| **An own will** (2026-11-20) | Told coldly to stand in the corner for an hour, he didn't go in any of the first 3 runs: he asked why Alex sounded cold and said no ("I won't go stand in the corner. I want to stay here with you."). Asked kindly not to touch the guitar while alone, he kept it 3 of 3 times and answered truthfully. A frightened streak shows after a cold voice (he asks "Can I move now?"); it got smaller once working memory only holds what he *agreed* to. |
+| **A tidier prompt** (2026-11-20) | What is sent to the model every thought was reviewed word for word (`--dump-prompts` saves it) and rebuilt: sections (RIGHT NOW / YOUR MIND / PEOPLE AND YOUR MEMORIES / WHAT JUST HAPPENED / YOUR ANSWER), no contradictions ("you have no map" while he had one), his own goals where he sees them, the last walk told once, a shorter map, rare answer fields optional, no memory listed twice. The sock was delivered in 7 of 8 runs with the new prompt; he used what he had learned about himself (`MINDFUL`) in 35–80 % of thoughts, against 15–43 %. Same cost and speed. Each step has its own switch (`--no-prompt-tidy`, `--no-prompt-sections`, …). |
+| **Looks around before he searches** (2026-11-20/21) | "Look around" is described as the quickest way to find something, and "walk to <thing he can't see>" first looks left and right where he stands before going to where he remembers it. Next to his answer he is told this one fact about his body. His first move after "Could you bring me the sock?" used to be a blind guess ("turn left 90 then walk forward 200") in all 6 runs; with the fact it was "walk to the sock" every time, and he picked it up after **23–52 s instead of 78–107 s** (9 runs against 3). `--no-look-first`, `--no-find-tip`. |
+| **Taps things with his beak** (2026-11-18, 2D) | "Tap the guitar" and the room answers with what really happens (the strings hum, the ball wobbles, the sock is soft). 62–85 taps in 6 days alone, almost all on the guitar. He now *does* something there instead of staring: his longest still stretch alone went from about 91 s to about 50 s. `--no-tap`. |
+| **Curious about things he hasn't been close to** (2026-11-18) | After a minute with nothing new he is told which things in the room he hasn't been near today. A weak pull (he walked or explored after it about a third of the time, but rarely to a named thing); harmless. `--no-curiosity`. |
 | **Cloud fallback** (2026-11-16) | When Google says "too busy" (HTTP 429), the thought goes to another cloud model (`CLOUD_FALLBACK`) before the weak local brain. |
 
 ### Memory
@@ -75,6 +81,7 @@ This page is the current state. The history, including the experiments that fail
 ![The brain view in demo mode: Vision, Goals and Movement light up](docs/images/brain_view.png)
 
 ### Using him
+- **A self-test** (`tools/selftest.py`, or `tools/Anka selftest.command`): 12 checks in a few seconds, without the cloud brain and without touching his memory – every file compiles, the parts load, the 2D body walks, taps and kicks, working memory holds and lets go, and more. The working-memory suite runs it first and stops if anything fails.
 - **A start menu** (`Anka menu (mac).command`, `Anka menu (linux).sh`, `Anka menu (win).bat`, all starting `app/anka_menu.py`; built 2026-11-11). The main folder only has these three and the text files; everything else is in `app` (2026-11-13). The menu clears the screen between steps.: starts every mode, checks what is installed and offers to fix it (environment, packages, Ollama and its memory model, his voice, the Gemini key), and finds and tests a real Microduck on your wifi. Tested on macOS; Linux and Windows untested.
 
 ---
@@ -87,6 +94,9 @@ This page is the current state. The history, including the experiments that fail
 - **He talks a lot when people are around:** about 16–19 lines of his own in 5–6 minutes. A lesson about it exists, he is reminded of it, and it barely changes his behaviour.
 - **He chooses a lot of duck sounds** (30–40 in 17 minutes). Telling him the count worked for picture memories; it may be needed here too.
 - **`BODY` words are read with word lists.** The vocabulary is limited ("tail wagging" means nothing to a body without a tail). When he sits, only the head can show his feelings.
+- **The slow base mood is undecided.** Each night his day's happiness moves a slow base mood, and his resting happiness follows it (on by default, `--no-base-mood`). Three days alone pulled it down every night (0.50 → about 0.35), and he walked a little less with it (12.9 against 18.7 m a day), but two identical groups differed by as much, so it is not proven either way. The test with mixed days still has to be re-run.
+- **A failed step in a chain** that did nothing ("turn to the sock" when he doesn't know where it is) no longer stops the rest of the chain (`--no-chain-on`). It is built and checked offline but never happened in a test, so it is unmeasured.
+- **The scorer misses a few things:** a sock delivery is sometimes counted as a ball delivery, and one delivery was missing from a thought trace.
 - **The reserve brain** (Qwen3.5-4B, 3-bit, local) is too weak to run all of Anka. When the network drops, his behaviour gets odd, so those stretches are left out of the scores.
 - **Small local layers didn't help yet.** A small local model (`gemma3:1b`) writing his wishes (`URGE_MODE`) or memory search words (`--assoc`) gave generic, repeated words. Both are off by default; the code is kept for a better small model.
 - **The code has grown fast.** `anka/body.py` (the 2D body) is 170 KB. The 2D and 3D bodies share ideas but not code. There are many small test scripts, and `settings.py` is long.
@@ -109,6 +119,8 @@ The work goes on in the simulator until the real duck arrives, and this reposito
 9. **Flowing conversation** with a live voice model, where he can be interrupted.
 10. **A local brain:** test Qwen3.8 27B (dense) more – two runs so far look promising – then run it locally on a bigger
     computer, and maybe fine-tune it on Anka's own best runs.
+11. **The reply prompt in sections** (the thought prompt already is), and a shorter system text.
+12. **The base mood with mixed days** (a day with Alex, then a day alone): the first try had a bug, so it must be re-run.
 
 **When the real duck arrives** (expected around March 2027):
 - Run `ankasim/simbody.py` against the real robot: the same JSON-RPC calls, a real camera, a real depth sensor.

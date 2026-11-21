@@ -9,6 +9,7 @@ import urllib.request
 import numpy as np
 
 from settings import (FAMILIARITY,)
+from settings import PROMPT_TIDY
 from settings import (AWAY_AFTER, CAMERA, CAMERA_WINDOW_SIZE, CLOUD_PICTURE_WIDTH, EYE_CHECKS_PER_SECOND, FACE_MATCH, FACE_SURE, FAMILIAR_AFTER, FOLDER, KNOWN_FACES_FILE, LEARN_FACES_MYSELF, LOOK_ALWAYS_WITH_CLOUD, LOOK_EVERY, LOOK_IN_THOUGHTS, MAX_FACE_PICTURES, NAME, NEW_THING_AFTER, PICTURE_WIDTH, RECOGNISE_FACES, SFACE_FILE, SFACE_URL, SHORT_OUTPUT, SHOW_CAMERA, SIM, YUNET_FILE, YUNET_URL)
 from anka.shared import S, cv2, state, wake
 
@@ -524,6 +525,10 @@ def update_sight(things, now):
         with memory_lock:
             for n in new_kinds:
                 seen.append(n)
+                if PROMPT_TIDY and n in places:   # (2026-11-20: he already remembers where it was - not "first time ever")
+                    state["events"].append(f"You see the {n} – you remember it was {places[n].get('where', 'somewhere here')}.")
+                    think_now = True
+                    continue
                 write_diary(f"I saw a {n} for the first time.")
                 state["events"].append(f"You saw a {n} for the first time ever.")
                 think_now = True
@@ -558,7 +563,9 @@ def update_sight(things, now):
         known_now = list(dict.fromkeys(state.get("who", [])))
         names_here = " and ".join(known_now)
         if state["person_last"] == 0 or away > AWAY_AFTER:
-            if state["person_last"] == 0:
+            if state["person_last"] == 0 and PROMPT_TIDY and state.get("last_human") and now - state["last_human"] < 120:
+                pass   # (2026-11-20: they are already talking to him - "IMPORTANT, you just woke up" pushed their words away)
+            elif state["person_last"] == 0:
                 state["events"].append(f"You just woke up and {names_here} {'are' if len(known_now) > 1 else 'is'} here."
                                        if known_now else "You just woke up and the human is here.")
             else:
@@ -615,7 +622,7 @@ def make_scene(things, faces):
 
 
 # ---- other parts of Anka (imported last, so the parts can use each other) ----
-from anka.memory import (ago, human_name, memory_lock, note_familiar, save_json, save_memory, seen, write_diary)
+from anka.memory import (ago, human_name, memory_lock, note_familiar, places, save_json, save_memory, seen, write_diary)
 from anka.brain import cloud_is_on
 from anka.face import show_window
 from anka.ears import camera_key

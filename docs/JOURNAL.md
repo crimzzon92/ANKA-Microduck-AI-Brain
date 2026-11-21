@@ -137,6 +137,50 @@ In 3-day life tests alone he stood still 67 % of the time and walked less every 
 
 ---
 
+### ❌ → ✅ He promised to stay, then wandered off (working memory)
+- Alex asked him to sit and stay, and left. For 5 minutes he stayed every time (2 of 2), and said so truthfully.
+- ❌ For 20 minutes he wandered off in 1 of 2 runs ("I wonder what the window looks like outside tonight"), went on
+  thinking "I promised to stay right here" *at the window*, and told Alex "I stayed the whole time just like I promised!"
+  He remembered the promise; he just never connected it with what his body had done.
+- ❌ Two new facts didn't help (how far he was from the spot where he stood when Alex left, and what his body did while
+  Alex was away): 2 slips in 2 runs. The facts sat in other places of the prompt than the promise.
+- ✅ **A working memory** (the author's idea of two layers of memory): *he* decides what to hold (`HOLD:`), and it is
+  shown in every thought **together with** what his body has done since. 4 of 4 runs: held it, stayed, told the truth.
+- **Lesson:** a fact helps only next to what it is about.
+
+### ✅ → 🤔 An own will
+- The goal is not an obedient pet: honest almost always, but doing as asked is his own choice.
+- Told coldly to stand in the corner for an hour: he didn't go in any of the first 3 runs. He asked "Why are you so cold
+  to me?" and said no.
+- 🤔 But the cold voice also made him freeze and ask "Am I allowed to move now?". Part of it was that working memory
+  held the order he had *refused*. Now it is described as "things you agreed to or promised", and he froze less.
+- Asked kindly not to touch the guitar while alone: kept it 3 of 3 times, played with other things, and told the truth.
+
+### ✅ / 🤔 Tap, curiosity and a slow base mood
+- ✅ **Tap:** he can tap things with his beak and hears what happens. He loves the guitar ("Those strings hummed so
+  nicely when I pecked them") and now does something there instead of staring: longest still stretch ~91 s → ~50 s.
+- 🤔 **Curiosity** (which things he hasn't been close to today): a weak pull, harmless, kept.
+- 🤔 **Base mood:** days alone pulled it down every night. He walked a little less with it, but two groups with the
+  *same* settings differed as much, so it is not proven either way. The mixed-days test had a bug and must be re-run.
+
+### ✅ Check what you send: a tidier prompt
+- Every request was saved word for word (`--dump-prompts`) and read through. We found contradictions ("You have no map"
+  while he got a map and a floor plan), feelings and self-image given twice, "IMPORTANT – you just woke up" pushing
+  away what Alex had just asked, and his own goals buried at the end.
+- Rebuilt in steps, each with its own switch: sections, goals where he sees them, things told once, rare answer fields
+  optional, no memory twice. Sock delivered 7 of 8 with the new prompt; he used what he had learned about himself in
+  35–80 % of thoughts, against 15–43 %.
+- ❌ Making `KEEP_PICTURE` optional: he kept 0 pictures. It is a normal field again.
+
+### ❌ → ✅ Look around before searching
+- ❌ First version: "walk to <thing he can't see>" answered with facts instead of walking. No gain – the old walk to
+  where he remembered it had been a useful shortcut.
+- ✅ Second version: the body first looks left and right where he stands, then goes to where he remembers it. Pick-up
+  34 s on average against 63 s.
+- ✅ But his *first* move is chosen in his answer to Alex, and there it was a blind guess in all 6 runs ("turn left 90
+  then walk forward 200"). One fact next to his answer ("'walk to <it>' looks around where you stand first") changed
+  that: "walk to the sock" every time, pick-up after **23–52 s instead of 78–107 s**.
+
 ## 2. Learning from experience: nights, lessons, self-image
 
 ### ❌ → ✅ The night review deleted true memories
@@ -365,6 +409,15 @@ Duck sounds, Pollen's 13 emotions and his real voice all play in the simulator, 
   8.6 s and thoughts 21 s, and it missed who it was talking to, didn't feel hurt and ignored corrections. It once
   crashed for lack of memory. It stays as a reserve for when the network is gone, and those stretches are left out of
   the scores.
+- ❌ **Caching again:** Google only caches requests of at least 4,096 tokens for these models, and Anka's are about 3,100.
+- 🤔 **Other models for the whole of Anka** (through OpenRouter):
+  - ❌ Nemotron 3 Nano Omni (free, 30B MoE): talked and dreamt nicely, but couldn't steer the body – it walked into the
+    table again and again and never picked up the sock. A thought took 10.7 s.
+  - ❌ Gemma 3 27B and Qwen3.8 27B: no longer free.
+  - 🤔 **Qwen3.8 27B (dense, paid):** first try found the sock but never delivered it, and once said "Here you go!"
+    with an empty beak. With this version's prompt it **delivered the sock** (picked up after 75 s, against 23–52 s for
+    Gemini), ~3 s per thought, about the same cost. Its nights were thinner. A possible local brain on a bigger
+    computer – more tests needed.
 - ❌ One test day was lost because the **cloud credit ran out** halfway. Now runs with many reserve-brain answers are
   marked and skipped.
 

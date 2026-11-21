@@ -39,14 +39,15 @@ FEELING_MEANING = {
 }
 
 
-def inner_state(with_goals=True):
-    """Text for the brain about how Anka feels and what it wants."""
+def inner_state(with_goals=True, words=True):
+    """Text for the brain about how Anka feels and what it wants.
+    words=False (2026-11-20, PROMPT_TIDY in a thought): no feeling list - the thought shows them as numbers already."""
     with feelings_lock:
         lines = []
         for k, v in feelings.items():
             meaning = FEELING_MEANING.get(k, "")
             lines.append(f"- {k}: {level(v)}" + (f" ({meaning})" if v >= STRONG and meaning else ""))
-        text = "How you feel right now:\n" + "\n".join(lines)
+        text = ("How you feel right now:\n" + "\n".join(lines)) if words else ""
         after = echo_text()
         if after:
             text += "\n" + after
@@ -248,6 +249,9 @@ def drift_feelings(previous, now):
     if FROZEN_FEELINGS:              # experiment: nothing drifts
         return
     minutes = (now - previous) / 60
+    if 0 < minutes < 10:            # (BASE MOOD, 2026-11-18: the day's average happiness, weighted by time)
+        state["mood_sum"] = state.get("mood_sum", 0.0) + feelings.get("happiness", 0.5) * minutes
+        state["mood_min"] = state.get("mood_min", 0.0) + minutes
     with feelings_lock:
         for k, (rest, speed) in RESTING.items():  # emotions slowly settle back to normal
             current = feelings.get(k, rest)

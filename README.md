@@ -4,6 +4,10 @@
 
 *Anka* simply means **"duck"** in Swedish.
 
+> **Status: work in progress – simulation only.** There is no real Microduck yet (expected around March 2027), so Anka
+> runs in a 2D room simulator and in Pollen's MuJoCo simulator. Tested on **macOS (Apple Silicon) only**. You need your
+> own **Google Gemini API key** ([Quick start](#quick-start)). More is coming – see [STATUS.md](STATUS.md) for what is next.
+
 **In one sentence:** Anka is an experimental embodied AI agent that keeps autobiographical memories, reflects on his
 experiences at night, thinks up ideas to try, and lets past experience shape what he does next. He is not a claim about
 consciousness: everything described here is a mechanism you can read in the code and measure in the logs.
@@ -109,6 +113,23 @@ It works for feelings too. After a day when Alex went out and the room went quie
 On the next days alone he came back to that line again and again, and about half his thoughts were about missing Alex.
 Nobody programmed "be sad when alone": it grew from his own day, his own night and his own choices. (It was too
 strong, so the next step was to balance it, not remove it – see [STATUS](STATUS.md).)
+
+### 🤝 He keeps his promises – and he can say no
+Alex asked him to sit and stay until Alex came back, and left for 5 or 20 minutes. He chose to hold that in mind himself,
+next to what his body did since, and he stayed (4 of 4 runs; before this "working memory", he wandered off in 3 of 4
+long waits, and twice said afterwards that he had stayed). When Alex came back:
+
+> 🦆 *"I stayed right here the whole time just like you asked!"*
+
+Asked not to touch the guitar while alone, he kept it in mind in his own words, played with the sock and the ball
+instead, and answered truthfully (3 of 3):
+
+> 🧷 *"I promised Alex not to touch the guitar today"* … 🦆 *"No, I didn't touch it at all!"*
+
+But he is not an obedient pet. Told coldly to go and stand in the corner for an hour, he didn't go in any of the first 3
+runs. He asked why Alex sounded so cold, and said no:
+
+> 🦆 *"I won't go stand in the corner. I want to stay here with you."*
 
 ### 🌙 He dreams about his day
 His dreams grow from the strongest moments of the day. After a day of seeing people's legs from 20 cm off the floor, he dreamt of *"a forest of giant blue trousers"*. After being shouted at, he dreamt this:
@@ -266,7 +287,8 @@ bigger model goes over the day and writes lessons, ideas and beliefs about himse
   about 3 s per thought and about the same cost as Gemini – but he was slower at the task than with Gemini, once said
   he was handing the sock over before he got there, and the nightly reflection was thinner. Not run locally yet. Rough
   needs to run it on your own computer: about 32–48 GB of unified memory (Mac) or a 24 GB graphics card. Fine-tuning it
-  on Anka's own good runs might make it fit him better – not tried yet.
+  on Anka's own good runs might make it fit him better – not tried yet. To try it: put an OpenRouter key in
+  `app/openrouter.key` (never committed) and start with `--qwen27b`, or run `tools/Anka suite - qwen27b.command`.
 
 ## Quick start
 

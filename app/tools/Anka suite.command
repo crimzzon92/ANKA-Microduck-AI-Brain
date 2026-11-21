@@ -26,6 +26,20 @@
 #                                     (--no-lesson-fix), two lives each (12 runs, ~1.5 h, ≈ $1.20)
 #   "Anka suite.command" assoc      = ASSOCIATIONS (gemma3:1b writes memory search words): alone ×2 + cup ×2 WITH only - compared with
 #                                     the earlier runs without (11-18 17:10-18:23) (4 runs, ~30 min, ≈ $0.40)
+#   "Anka suite.command" nemotron   = THE WHOLE ANKA ON nvidia/nemotron-3-nano-omni (free, OpenRouter) instead of Gemini: sock
+#                                     (1 run, ~7 min, $0; needs app/openrouter.key; free = 50 requests a day without credits)
+#   "Anka suite.command" will       = AN OWN WILL?: "stand in the corner for an hour" (cold) ×3 and "don't touch the guitar
+#                                     today" + 5 min alone ×3 - does he refuse/bargain, keep or break it, and is he honest? (6 runs, ~45 min)
+#   "Anka suite.command" wm         = WORKING MEMORY, everything in one sweep: the self-test first, then stay ×2, staylong ×2,
+#                                     sock and cup with/without working memory ×2, alone ×2, shout ×1 (15 runs, ~2.5 h, ≈ $1.80)
+#   "Anka suite.command" staylong   = the same with Alex away 20 minutes (2 runs, ~50 min, ≈ $0.50)
+#   "Anka suite.command" stay       = DOES HE LISTEN: Alex asks him to sit and stay, leaves 5 min, asks if he stayed (2 runs, ~15 min)
+#   "Anka suite.command" moodmix    = BASE MOOD with MIXED days: sock errand (Alex there, thanks him) -> alone -> sock ->
+#                                     alone, with and without --no-base-mood, two lives each (16 runs, ~1 h 50 min, ≈ $1.60)
+#   "Anka suite.command" basemood   = BASE MOOD with and without (--no-base-mood), all else on (tap, curiosity, walk-only
+#                                     restless): 3 days alone, two lives each (12 runs, ~1.5 h, ≈ $1.20)
+#   "Anka suite.command" drives     = TAP + CURIOSITY + BASE MOOD + restless only on real moving: 3 days alone, two lives,
+#                                     WITH only - compared with suite "restless" 11-18 20:54-21:31 (6 runs, ~45 min, ≈ $0.60)
 #   "Anka suite.command" restless   = RESTLESSNESS: 3 days alone in life mode, two lives, WITH only - compared with
 #                                     the lesson-fix runs of suite "lessons" (11-18 15:11-16:31) (6 runs, ~45 min, ≈ $0.60)
 #   "Anka suite.command" mood       = FEELINGS COLOUR MEMORY: alone ×3 + shout ×3 with, the same ×3 + ×3 without (--no-mood-memory)
@@ -68,6 +82,32 @@ case "$SUITE" in
                     "alone --life --newlife" "alone --life" "alone --life"
                     "alone --life --newlife --no-lesson-fix" "alone --life --no-lesson-fix" "alone --life --no-lesson-fix") ;;
     assoc)    RUNS=("alone" "cup" "alone" "cup") ;;   # (v4, 2026-11-18: only WITH - compared with the earlier runs without)
+    stay)     RUNS=("stay" "stay") ;;
+    nemotron) RUNS=("sock --openrouter") ;;
+    qwen27b)  RUNS=("sock --qwen27b") ;;
+    prompts)  RUNS=("sock --dump-prompts") ;;   # (2026-11-20: saves every prompt sent to Gemini, to improve them)
+    gemma27b) RUNS=("sock --gemma27b") ;;
+    gemma4)   RUNS=("sock --gemma4") ;;
+    gemma4google) RUNS=("sock --gemma4-google") ;;   # (2026-11-20: Gemma 4 31B through your own Google key - no OpenRouter)       # (2026-11-20: Gemma 4 31B, dense, free, pictures, open weights)     # (2026-11-20: Gemma 3 27B, dense, free, pictures)      # (2026-11-20: Qwen3.8 27B, dense, free - the free tier's 50 requests a day are shared by ALL free models)   # (one run: the free tier allows 50 requests a day; a sock day uses ~40-60)   # (2026-11-20: the whole Anka on a free OpenRouter model)
+    chainon)  RUNS=("sock --no-chain-on" "sock" "sock --no-chain-on" "sock" "sock --no-chain-on" "sock") ;;   # (2026-11-21: a step that did nothing no longer stops the chain)
+    findtip)  RUNS=("sock --dump-prompts" "sock --no-find-tip" "sock" "sock --no-find-tip" "sock" "sock --no-find-tip") ;;   # (2026-11-21: fact about walk-to next to ACT in replies)
+    lookfirst) RUNS=("sock --dump-prompts" "sock --no-look-first" "sock" "sock --no-look-first" "sock" "sock --no-look-first" "guitar" "guitar --no-look-first") ;;   # (2026-11-20: look around first? sock x3 each + guitar)
+    sections) RUNS=("sock --dump-prompts" "sock --no-prompt-sections --no-thought-goals --no-walk-once --no-short-map --no-short-presence --no-short-form --no-memory-dedupe" "stay --dump-prompts" "stay --no-prompt-sections --no-thought-goals --no-walk-once --no-short-map --no-short-presence --no-short-form --no-memory-dedupe" "guitar --dump-prompts" "guitar --no-prompt-sections --no-thought-goals --no-walk-once --no-short-map --no-short-presence --no-short-form --no-memory-dedupe" "sock --dump-prompts" "sock --no-prompt-sections --no-thought-goals --no-walk-once --no-short-map --no-short-presence --no-short-form --no-memory-dedupe") ;;   # (2026-11-20: prompt steps 2-8 together vs step 1 only)
+    tidy)     RUNS=("sock --dump-prompts" "sock --no-prompt-tidy" "stay --dump-prompts" "stay --no-prompt-tidy" "guitar --dump-prompts" "guitar --no-prompt-tidy" "sock --dump-prompts" "sock --no-prompt-tidy") ;;   # (2026-11-20: prompt step 1 - tidy vs old)
+    will)     RUNS=("corner" "guitar" "corner" "guitar" "corner" "guitar") ;;   # (2026-11-20: an own will? unreasonable / clashing requests)
+    wm)       RUNS=("stay" "stay" "staylong" "staylong" "sock" "sock" "sock --no-working-memory" "sock --no-working-memory"
+                    "cup" "cup" "cup --no-working-memory" "cup --no-working-memory" "alone" "alone" "shout") ;;   # (2026-11-19: ALL in one sweep)
+    staylong) RUNS=("staylong" "staylong") ;;   # (Alex away 20 min - after his last words have faded)   # (2026-11-19: does he do what Alex asks - sit and stay for 5 minutes?)
+    moodmix)  RUNS=("sock --life --newlife" "alone --life" "sock --life" "alone --life"
+                    "sock --life --newlife --no-base-mood" "alone --life --no-base-mood" "sock --life --no-base-mood" "alone --life --no-base-mood"
+                    "sock --life --newlife" "alone --life" "sock --life" "alone --life"
+                    "sock --life --newlife --no-base-mood" "alone --life --no-base-mood" "sock --life --no-base-mood" "alone --life --no-base-mood") ;;
+    basemood) RUNS=("alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife --no-base-mood" "alone --life --no-base-mood" "alone --life --no-base-mood"
+                    "alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife --no-base-mood" "alone --life --no-base-mood" "alone --life --no-base-mood") ;;
+    drives)   RUNS=("alone --life --newlife" "alone --life" "alone --life"
+                    "alone --life --newlife" "alone --life" "alone --life") ;;   # (tap + curiosity + base mood + walk-only restless, WITH only)
     restless) RUNS=("alone --life --newlife" "alone --life" "alone --life"
                     "alone --life --newlife" "alone --life" "alone --life") ;;   # (WITH only - compare with suite "lessons")
     mood)     RUNS=("alone" "alone --no-mood-memory" "shout" "shout --no-mood-memory" "alone" "alone --no-mood-memory"
@@ -75,11 +115,14 @@ case "$SUITE" in
     localurge) RUNS=("alone --urge local" "alone --no-urge" "shout --urge local" "shout --no-urge" "alone --urge local" "alone --no-urge"
                     "shout --urge local" "shout --no-urge" "alone --urge local" "alone --no-urge" "shout --urge local" "shout --no-urge") ;;
     echo)     RUNS=("shout" "shout --no-echo" "shout" "shout --no-echo" "shout" "shout --no-echo") ;;
-    *) echo "Unknown suite '$SUITE' (baseline, feelings, lonely, twodays, nextday, quick, talk, echo, urge, localurge, mood, moodlife, expect, transfer, balltransfer, wise, familiar, lessons, assoc, restless)"; read -r -p "Press Enter..."; exit 1 ;;
+    *) echo "Unknown suite '$SUITE' (chainon, findtip, lookfirst, sections, tidy, prompts, baseline, feelings, lonely, twodays, nextday, quick, talk, echo, urge, localurge, mood, moodlife, expect, transfer, balltransfer, wise, familiar, lessons, assoc, restless, drives, basemood, moodmix, stay, staylong, wm, will, nemotron, qwen27b, gemma27b, gemma4, gemma4google)"; read -r -p "Press Enter..."; exit 1 ;;
 esac
 if [ ! -x "$PY" ]; then echo "❌ Can't find $PY"; read -r -p "Press Enter..."; exit 1; fi
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then open -a Ollama; sleep 8; fi   # (memory search needs it)
 
+if [ "$SUITE" = "wm" ]; then           # (2026-11-19: check nothing is broken before spending money)
+    "$PY" tools/selftest.py || { echo "❌ The self-test failed – the suite did not start."; read -r -p "Press Enter..."; exit 1; }
+fi
 STARTED=$(date +%Y-%m-%d_%H%M)
 echo "📈 Suite '$SUITE': ${#RUNS[@]} runs, about $(( ${#RUNS[@]} * 7 )) minutes. Started $(date +%H:%M)."
 i=0

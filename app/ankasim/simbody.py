@@ -26,6 +26,10 @@ import threading
 import time
 
 import numpy as np
+try:
+    from settings import LOOK_FIRST
+except Exception:      # (run on its own, without Anka's settings)
+    LOOK_FIRST = False
 
 try:
     import cv2
@@ -604,7 +608,8 @@ class SimBody:
                     lines.append("[Your mental map – where you remember seeing things, guessed from counting your own steps and "
                                  "from landmarks you saw (it gets less exact the more you walk): " + "; ".join(words) + ".]")
                 lines.append(f"[Your own floor plan (a robot-vacuum-style map from your depth sensor): {self.mind.floor_words()}.]")
-                earlier = [f"the {k} – {v['where']} (seen {v.get('date', 'earlier')})" for k, v in self.mind.places.items()
+                from anka.memory import days_ago
+                earlier = [f"the {k} – {v['where']} (seen {days_ago(v.get('date', 'earlier')) if LOOK_FIRST else v.get('date', 'earlier')})" for k, v in self.mind.places.items()
                            if self.mind.pos_of(k) is None]
                 if earlier:
                     lines.append("[Where things were when you last saw them (they may have been moved): " + "; ".join(earlier) + ".]")
@@ -1269,8 +1274,15 @@ class SimBody:
         if not near or self.mind.pos_of(near) is None:
             return (f"the {name} was {place['where']} last time, but you don't know where "
                     f"{'the ' + near if near else 'that'} is from here – look around to find it"), False
+        first = ""
+        if LOOK_FIRST:   # (2026-11-20 v2: look around where he stands FIRST, then walk)
+            self._sense(force=True)
+            if self._visible_name(name, 1.5) or self._scan_for(name):
+                last, ok = self._walk_to(name)
+                return f"looked left and right from where you stand and spotted the {name} – you {last}", ok
+            first = f"looked left and right from where you stand – no {name} in sight; then "
         text, why = self._go(lambda: self.mind.pos_of(near), STOP_AT.get(near, 0.45), f"the {near}")
-        text = f"went to look {place['where']}, where the {name} was last time: {text}"
+        text = first + f"went to look {place['where']}, where the {name} was last time: {text}"
         if why in ("fell", "blocked", "lost"):
             return text + f" – but you didn't get there ({why})", False
         self._sense(force=True)

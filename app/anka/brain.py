@@ -14,6 +14,10 @@ from datetime import datetime
 import numpy as np
 
 from settings import CLOUD_FALLBACK, CLOUD_BUSY_SWITCH, CLOUD_BUSY_RETRY, LESSON_FIX
+from settings import WORKING_MEMORY
+from settings import TAP_SKILL
+from settings import DUMP_PROMPTS, PROMPT_FILE
+from settings import PROMPT_TIDY, PROMPT_SECTIONS, MEMORY_DEDUPE, LOOK_FIRST, FIND_TIP
 from settings import (PICTURE_REPEAT, BODY_SENSES, BRAIN, CLOUD_API, CLOUD_BRAIN, CLOUD_GOOGLE_URL, CLOUD_CACHED_SHARE, CLOUD_PICTURE_DETAIL, NIGHT_CLOUD_BRAIN, NIGHT_THINKING, NIGHT_TIMEOUT, CLOUD_KEY, CLOUD_KEY_FILE, CLOUD_RETRY_AFTER, CLOUD_THINKING, CLOUD_TIMEOUT, CLOUD_URL, CONTEXT_SIZE, HAS_BODY, MUJOCO, LEARN_FACES_MYSELF, MAX_SENTENCES, MAX_WORDS, MEMORIES_PER_QUESTION, NAME, RECENT_DIARY, RECOGNISE_FACES, REPEAT_PENALTY, SAME_MEANING, SIM, TEMP_REPLY, TOO_SIMILAR, TOP_K, TOP_P)
 from anka.shared import S, state
 
@@ -96,7 +100,8 @@ SYSTEM = (
        "remember seeing> / look left / "
        "look right / look up / look down / look straight / look at <something you see> / look around (your next "
        "picture then shows left, ahead and right) / sit down / stand up / get up (after a fall) / kick the ball / "
-       "pick up <thing> / put down / explore (walk to the nearest place you haven't explored yet and look around). "
+       "pick up <thing> / put down / " + ("tap <thing> (a light tap or peck with your beak - you hear and feel what "
+       "happens) / " if TAP_SKILL else "") + "explore (walk to the nearest place you haven't explored yet and look around). "
        "Up to three in a row joined with 'then'. Your body tells you what happened. "
        "When you walk to something, your legs step around small things in the way by themselves. "
        "Walking to a piece of furniture takes you to its nearest edge or corner – if you want to be with a person who "
@@ -145,6 +150,17 @@ SYSTEM = (
     "or called names HURTS: happiness drops a lot and nervousness jumps – even if you love the person. Loving "
     "someone doesn't stop it from hurting. An apology helps, but the hurt fades slowly, not at once."
 )
+if LOOK_FIRST:    # 2026-11-20: a suggestion, like an instinct - he may do otherwise
+    _LOOK_TIP = (" – the quickest way to find something you can't see; like most creatures, you usually look around "
+                 "first before you walk off to search")
+    SYSTEM = SYSTEM.replace("look around (your next picture then shows left, ahead and right)",
+                            "look around (your next picture then shows left, ahead and right)" + _LOOK_TIP)
+    SYSTEM = SYSTEM.replace("bottom row: up, and down at the floor right in front of your feet)",
+                            "bottom row: up, and down at the floor right in front of your feet)" + _LOOK_TIP)
+if PROMPT_TIDY:   # 2026-11-20: he DOES get a mental map and a floor plan - "no map" contradicted that
+    SYSTEM = SYSTEM.replace("You have no map and nobody tells you where things are – look, and remember.",
+                            "Nobody tells you where things are – you look, and remember: the mental map and floor plan "
+                            "you are given are your own memory of what you have seen.")
 
 
 REASONING = (r"(?i)\s*(okay|ok|alright|let me|let's|so,|first,|hmm)[ ,].{0,80}\b(user|anka|respond|"
@@ -295,7 +311,10 @@ def local_brain(messages, temperature=0.9, max_tokens=None, stop=None):
 # ---------- The cloud brain ----------
 # what the cloud brains cost, $ per million tokens read / written (Google's price page, 2026-10-29)
 CLOUD_PRICES = {"gemini-3.5-flash-lite": (0.30, 2.50), "gemini-3-flash-preview": (0.50, 3.00), "gemini-3.6-flash": (0.75, 3.75), "gemini-2.5-flash": (0.30, 2.50),
-                "gemini-3.8-flash": (0.75, 3.75), "gemini-4-argon": (2.00, 10.00)}
+                "gemini-3.8-flash": (0.75, 3.75), "gemini-4-argon": (2.00, 10.00),
+                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": (0.0, 0.0), "qwen/qwen3.8-27b:free": (0.0, 0.0),
+                "google/gemma-3-27b-it:free": (0.0, 0.0), "google/gemma-4-31b-it:free": (0.0, 0.0),
+                "gemma-4-31b-it": (0.0, 0.0), "qwen/qwen3.8-27b": (0.40, 3.00)}
 
 
 def cloud_cost_words():
@@ -356,7 +375,8 @@ def _google_request(messages, temperature, max_tokens, thinking, model=""):
     """The question in the form of Google's own Gemini API: the system text apart, 'model' instead of
     'assistant', pictures as inline data – each with how sharp Gemini should look at it."""
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system" and m.get("content"))
-    level = MEDIA_LEVELS.get(CLOUD_PICTURE_DETAIL) if cloud["media"] == "part" else None
+    gemma = model.startswith("gemma")   # 2026-11-20: Gemma on the Gemini API - no picture-sharpness setting, the system
+    level = MEDIA_LEVELS.get(CLOUD_PICTURE_DETAIL) if cloud["media"] == "part" and not gemma else None   # text goes first
     contents = []
     for m in messages:
         if m["role"] == "system":
@@ -381,15 +401,19 @@ def _google_request(messages, temperature, max_tokens, thinking, model=""):
     config = {"temperature": temperature, "topP": TOP_P}
     if max_tokens:
         config["maxOutputTokens"] = max_tokens + 800    # room for the quiet thinking, which also counts
-    if model.startswith("gemini-2"):    # 2026-11-15: the 2.x models take a thinking BUDGET (tokens), not a level
+    if gemma:                           # (2026-11-20 ping: "Thinking level is not supported for this model" - Gemma gets
+        pass                            #  no thinking setting at all, day or night; it thinks a little by itself)
+    elif model.startswith("gemini-2"):    # 2026-11-15: the 2.x models take a thinking BUDGET (tokens), not a level
         config["thinkingConfig"] = {"thinkingBudget": {None: 0, "minimal": 0, "low": 512, "medium": 2048,
                                                        "high": 8192}.get(thinking, 0)}
     elif thinking:
         config["thinkingConfig"] = {"thinkingLevel": thinking}
-    if cloud["media"] == "global" and CLOUD_PICTURE_DETAIL in MEDIA_LEVELS:
+    if cloud["media"] == "global" and CLOUD_PICTURE_DETAIL in MEDIA_LEVELS and not gemma:
         config["mediaResolution"] = "MEDIA_RESOLUTION_" + CLOUD_PICTURE_DETAIL.upper()
     body = {"contents": contents, "generationConfig": config}
-    if system:
+    if system and gemma and contents:   # (some Gemma versions refuse a separate system text: put it first instead)
+        contents[0]["parts"].insert(0, {"text": system + "\n\n"})
+    elif system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
     return body
 
@@ -397,6 +421,26 @@ def _google_request(messages, temperature, max_tokens, thinking, model=""):
 def cloud_is_on():
     """True if the next question goes to the cloud brain (not the reserve)."""
     return bool(CLOUD_KEY) and time.time() >= cloud["off_until"]
+
+
+_dump_count = [0]
+
+
+def _dump_prompt(messages, model, thinking, max_tokens):
+    """(--dump-prompts) Writes one request to the cloud brain to test_logs/prompts_....txt, word for word."""
+    try:
+        _dump_count[0] += 1
+        out = [f"\n{'=' * 100}\n#{_dump_count[0]}  {time.strftime('%H:%M:%S')}  model={model}  thinking={thinking}"
+               f"  max_tokens={max_tokens}\n{'=' * 100}"]
+        for m in messages:
+            pics = len(m.get("images") or []) + (1 if m.get("audio") else 0)
+            text = m.get("content") if isinstance(m.get("content"), str) else str(m.get("content"))
+            out.append(f"----- {m['role'].upper()}" + (f"  (+{pics} picture/sound)" if pics else "")
+                       + f"  [{len(text)} chars] -----\n{text}")
+        with open(PROMPT_FILE, "a", encoding="utf-8") as f:
+            f.write("\n".join(out) + "\n")
+    except Exception as error:
+        print(f"(could not save the prompt: {error})")
 
 
 def cloud_brain(messages, temperature=0.9, max_tokens=None, stop=None):
@@ -410,6 +454,8 @@ def cloud_brain(messages, temperature=0.9, max_tokens=None, stop=None):
         model = CLOUD_FALLBACK  # Google was busy for his normal brain a moment ago
     thinking = NIGHT_THINKING if (night or harder == "wise") else (harder or cloud["thinking"])
     room = 5200 if night else 3000 if harder == "wise" else {"low": 1500, "medium": 3500, "high": 6000}.get(harder, 0)
+    if DUMP_PROMPTS:
+        _dump_prompt(messages, model, thinking, max_tokens)
     google = CLOUD_API == "google"
     if google:
         request = _google_request(messages, temperature, max_tokens and max_tokens + room, thinking, model)
@@ -418,7 +464,14 @@ def cloud_brain(messages, temperature=0.9, max_tokens=None, stop=None):
     else:
         request = {"model": model, "messages": _cloud_messages(messages), "temperature": temperature,
                    "top_p": TOP_P, "stream": True, "stream_options": {"include_usage": True}}
-        if thinking:
+        if "openrouter.ai" in CLOUD_URL and "gemma-3" in model:   # (Gemma 3 has no thinking - no reasoning field)
+            pass
+        elif "openrouter.ai" in CLOUD_URL:          # (OpenRouter's own form) 2026-11-20 ping: with "low" Nemotron still
+            # thought ~1000 tokens (7.9 s) and with too little room gave NO answer; thinking OFF answered well in 1.3 s.
+            # So: day thoughts and answers without thinking (like Gemini's "minimal"), the wise / night brain thinks.
+            request["reasoning"] = ({"enabled": False} if thinking in (None, "", "minimal") else
+                                    {"effort": thinking, "exclude": True})
+        elif thinking:
             request["reasoning_effort"] = thinking
         if max_tokens:
             request["max_tokens"] = max_tokens + (6000 if night else 800 + room)  # room for the quiet thinking, which also counts
@@ -553,7 +606,7 @@ def ollama(messages, temperature=0.9, max_tokens=None, stop=None):
 
 
 FIELDS = ("THOUGHT", "FEEL", "FACE", "REMEMBER", "SPEAK", "WHY", "SAY", "EXPECT", "SURPRISE", "GOAL", "DONE", "DROP", "LOOK_FOR", "HEARD", "TONE",
-          "LEARN_FACE", "MOMENT", "FEELING", "ACT", "PLACE_NOTE", "MINDFUL", "IDEA", "KEEP_PICTURE", "BODY", "URGE")
+          "LEARN_FACE", "MOMENT", "FEELING", "ACT", "PLACE_NOTE", "MINDFUL", "IDEA", "KEEP_PICTURE", "BODY", "URGE", "HOLD", "LETGO")
 
 
 def field(name, answer):
@@ -687,8 +740,57 @@ def clock_note():
     return f"Right now it is {now:%A %-d %B, %H:%M} ({part})."
 
 
+def _wm_words():
+    """2026-11-19 (WORKING_MEMORY): what he is holding in mind right now, with what his body did since."""
+    try:
+        from anka.working_memory import words
+        return "\n" + words() if words() else ""
+    except Exception:
+        return ""
+
+
+def take_hold(answer, human_said=None):
+    """Takes HOLD: / LETGO: lines off an answer to the human and gives them to the working memory (his choice)."""
+    if not WORKING_MEMORY or not answer:
+        return answer
+    try:
+        from anka import working_memory as WM
+        from anka.memory import human_name
+    except Exception:
+        return answer
+    for name in ("HOLD", "LETGO"):
+        for m in list(re.finditer(rf"(?i)\n?[ \t]*\b{name}\s*:\s*([^\n]*)", answer)):
+            if name == "HOLD":
+                WM.hold(m.group(1), who=human_name() or "the human", their_words=human_said)
+            else:
+                WM.letgo(m.group(1))
+        answer = re.sub(rf"(?i)\n?[ \t]*\b{name}\s*:\s*[^\n]*", "", answer)
+    return answer.strip()
+
+
+def _away_recall():
+    """2026-11-19 (AWAY_RECALL): what his body did while the human was away - so his answer can rest on it."""
+    try:
+        from anka.thinking import away_recall_words
+        return away_recall_words(time.time())
+    except Exception:
+        return ""
+
+
+
+def _dedupe(lines):
+    """The same memory only once: lines that are equal without '(it felt: ...)' and '[a picture memory]' - the first
+    (fuller) one is kept. (MEMORY_DEDUPE, 2026-11-20)"""
+    seen_, out = set(), []
+    for x in lines:
+        key = re.sub(r"\s*\(it felt:[^)]*\)|\s*\[a picture memory\]", "", x).strip().lower()
+        if key not in seen_:
+            seen_.add(key)
+            out.append(x)
+    return out
+
 def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=None, reply_to_human=False,
-              no_memories=False, with_goals=None, picture=None, stop=None, return_sent=False, audio=None):
+              no_memories=False, with_goals=None, picture=None, stop=None, return_sent=False, audio=None, private=False):
     """Sends messages to the brain and gets an answer.
     What is (almost) the same every time – who Anka is – comes first. What changes – feelings, memories,
     lines to avoid – goes last, in the latest message. Then Ollama can reuse the start from last time,
@@ -701,8 +803,12 @@ def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=No
         if lessons and not LESSON_FIX:     # (2026-11-18: with LESSON_FIX a lesson only comes in a thought when it fits)
             system += ("\n\nLessons you taught yourself by looking back on earlier days:\n- " + "\n- ".join(lessons))
 
-    notes = [clock_note() + "\n" + inner_state(with_goals=(not reply_to_human) if with_goals is None else with_goals)
+    tidy_thought = PROMPT_TIDY and private   # (a private thought: feelings come as numbers there, nobody to answer)
+    notes = [clock_note() + "\n" + inner_state(with_goals=(not reply_to_human) if with_goals is None else with_goals,
+                                               words=not tidy_thought)
              + people_note()
+             + (_away_recall() if reply_to_human and HAS_BODY else "")
+             + (_wm_words() if reply_to_human else "")
              + ("\nAnswer what the human just said, short – one sentence is often enough. Stay on THEIR topic. "
                 "Let how you feel right now colour HOW you say it (glad, sad, nervous, playful...), like a real "
                 "little creature would – without explaining your feelings unless they ask.\n"
@@ -717,10 +823,20 @@ def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=No
                    "also write on a new line: LEARN_FACE: <their name>. Otherwise leave that line out."
                    if can_learn_face() else "")
                 + ("\nIf you want to move your body now (because the human asked you to, or because you want to), "
-                   "also write on a new line: ACT: <what your body does>. Leave that line out to stay where you are."
+                   "also write on a new line: ACT: <what your body does>."
+                   + (" To find something you can't see, 'walk to <it>' looks around where you stand first and then "
+                      "goes where you remember it." if FIND_TIP and LOOK_FIRST else "")
+                   + " Leave that line out to stay where you are."
                    if HAS_BODY else "")
                 + ("\nBODY: <how your feelings show in your body right now, in a few words – or none>" if MUJOCO else "")
+                + ("\nIf you have just agreed to something that lasts beyond this moment, or promised something, and "
+                   "you want to keep it in mind, also write on a new line: HOLD: <it in a few words, e.g. 'I promised Alex "
+                   "to stay here until Alex comes back'>. Only what you yourself agreed to or promised - not something "
+                   "you were told and didn't agree to. If something you are holding in mind is done or no longer wanted, "
+                   "write: LETGO: <a few words of it>. Leave these lines out otherwise."
+                   if WORKING_MEMORY else "")
                 if reply_to_human
+                else "" if tidy_thought
                 else "\nLet your feelings and goals colour how you talk, but always answer the human first.")]
     # Anka's own earlier thoughts are left out – otherwise it keeps thinking about what it already thought
     candidates = [c for c in all_memories() if not c[0].startswith("I thought:")]
@@ -740,6 +856,8 @@ def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=No
         used_to_be = [h[1] for h in hits if h[2] == "old"]
         own = [h[1] for h in hits if h[2] in ("diary", "talk")]
         own += [x for x in latest if x not in own]
+        if MEMORY_DEDUPE:     # (2026-11-20: the same memory with and without "(it felt: ...)" was listed twice)
+            own = _dedupe(own)
         if about_human:
             notes.append("Facts about THE HUMAN (not about you) that may matter right now. "
                          "Only use them if they fit what the human is talking about:\n- " + "\n- ".join(about_human))
@@ -799,7 +917,13 @@ def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=No
         _picture_events.append(old_picture[1])
     if audio and messages and messages[-1]["role"] == "user":
         messages[-1]["audio"] = audio  # your voice – only the cloud brain can hear it
-    if messages and messages[-1]["role"] == "user":
+    if PROMPT_SECTIONS and private and messages and "<<MEMORIES>>" in messages[-1].get("content", ""):
+        # (2026-11-20 step 2: the clock is already under RIGHT NOW - the rest goes in its own section)
+        first = notes[0].split("\n", 1)[1] if "\n" in notes[0] else ""
+        parts = [p.strip() for p in [first] + notes[1:] if p and p.strip()]
+        messages[-1]["content"] = messages[-1]["content"].replace(
+            "<<MEMORIES>>", ("=== PEOPLE AND YOUR MEMORIES ===\n" + "\n\n".join(parts) + "\n") if parts else "")
+    elif messages and messages[-1]["role"] == "user":
         messages[-1]["content"] = ("[Private notes for you – the human did not say this]\n"
                                    + "\n\n".join(notes) + "\n[End of notes]\n\n"
                                    + messages[-1]["content"])
@@ -810,7 +934,7 @@ def ask_brain(messages, temperature=None, avoid=None, search=None, max_tokens=No
     answer = ollama(sent, TEMP_REPLY if temperature is None else temperature, max_tokens, **extra)
     if reply_to_human:
         # (a face to remember, how much this moment meant, and how it feels in his own words)
-        answer = take_feeling(take_moment(take_learn_face(take_act(take_place_note(take_body(answer))))))
+        answer = take_feeling(take_moment(take_learn_face(take_act(take_place_note(take_body(take_hold(answer, search)))))))
     return (answer, sent) if return_sent else answer
 
 
@@ -838,12 +962,12 @@ def reply_to_event(event, human_said, fallback):
         return fallback
 
 
-NOT_SAID = "URGE|BODY|FEEL|FACE|THOUGHT|EXPECT|SURPRISE|GOAL|DONE|DROP|LOOK_FOR|TONE|MOMENT|FEELING|MINDFUL|IDEA|KEEP_PICTURE|REMEMBER|WHY|SPEAK|HEARD|LEARN_FACE"
+NOT_SAID = "HOLD|LETGO|URGE|BODY|FEEL|FACE|THOUGHT|EXPECT|SURPRISE|GOAL|DONE|DROP|LOOK_FOR|TONE|MOMENT|FEELING|MINDFUL|IDEA|KEEP_PICTURE|REMEMBER|WHY|SPEAK|HEARD|LEARN_FACE"
 
 
 def clean(text):
     """Removes quotes, 'quack', emojis and explanations – and cuts to MAX_SENTENCES."""
-    text = re.sub(r"(?i)\b(ACT|PLACE_NOTE)\s*:[^\n]*", "", text)  # body moves and place notes are never said out loud
+    text = re.sub(r"(?i)\b(ACT|PLACE_NOTE|HOLD|LETGO)\s*:[^\n]*", "", text)  # body moves and place notes are never said out loud
     # 2026-11-15: a smaller brain sometimes writes another field INSIDE what he says ("BODY: holding head high and
     # bobbing eagerly There is a cute little thing!") - cut the label and its words up to the next sentence
     text = re.sub(r"(?i:\bSAY)\s*:\s*", "", text)

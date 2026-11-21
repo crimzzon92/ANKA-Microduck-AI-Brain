@@ -29,6 +29,7 @@ Start Pollen's simulator first with `Start Anka sim.command` (in the top folder)
 | `Anka score.command` | Runs the scorer and shows the comparison. |
 | `replay_test.py` | Replays the moves from a 2D test log offline (no cloud brain, no cost) with many random seeds, to measure his map. |
 | `trail_plot.py` | Draws the path of a replayed log, old settings against new. |
+| `selftest.py` · `Anka selftest.command` | 12 quick checks without the cloud brain (files compile, parts load, the 2D body walks/taps/kicks, working memory, …). Writes nothing to his memory. Run it after changing code. |
 
 ## Watching his brain
 
@@ -58,6 +59,16 @@ roughly $0.10 per run. The numbers they produced are in [STATUS](../STATUS.md) a
 | `Anka suite - transfer.command` | Transfer test: can't reach a cup on day 1, then a sock on the sofa on day 2, against a fresh life. |
 | `Anka suite - balltransfer.command` | Ball transfer test: with night ideas, without them, and a fresh life. |
 | `Anka suite - wise.command` | The wiser brain when stuck: the ball in the corner, with against without. |
+| `Anka suite - drives.command` | Tap + curiosity + base mood, 3 days alone, two lives. |
+| `Anka suite - basemood.command` | The slow base mood with against without, 3 days alone, two lives each. |
+| `Anka suite - stay.command` | Does he listen? Alex asks him to sit and stay, leaves for 5 minutes. |
+| `Anka suite - staylong.command` | The same, with Alex away 20 minutes. |
+| `Anka suite - wm.command` | Working memory, all in one sweep (self-test first): stay, staylong, sock and cup with/without, alone, shout. |
+| `Anka suite - will.command` | An own will? A cold "stand in the corner for an hour", and "don't touch the guitar today". |
+| `Anka suite - lookfirst.command` | Look around before searching: sock ×3 + guitar, with against without. |
+| `Anka suite - findtip.command` | The fact next to his answer ("walk to <it> looks around first"): sock ×3, with against without. |
+| `Anka suite - qwen27b.command` | The whole Anka on Qwen3.8 27B through OpenRouter (paid; needs `app/openrouter.key`). One sock day. |
+| `OpenRouter ping (qwen).command` · `openrouter_ping.py` | Checks your OpenRouter key and asks the model one small question with a picture. |
 | `Anka suite - urge.command` | An inner wish written in the same answer as the thought, with against without. |
 | `Anka suite - localurge.command` | The wish written by a small local model (`gemma3:1b`), with against without. |
 | `Anka suite - mood.command` | Feelings colour what he remembers: alone and shout, with against without. |

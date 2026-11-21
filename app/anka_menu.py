@@ -426,6 +426,20 @@ def start_3d():
 
 SUITES = [   # (name, what it tests) - the measuring tests in tools/ (short: one line in a normal terminal)
     ("moodlife", "feelings colour memory, 2 days, with/without (8 runs, 1 h)"),
+    ("qwen27b", "whole Anka on Qwen3.8 27B (OpenRouter, paid) (1 run, 7 min)"),
+    ("prompts", "sock day that saves every prompt sent to Gemini (1 run, 7 min)"),
+    ("tidy", "tidier prompt vs old: sock, stay, guitar (8 runs, 1 h)"),
+    ("sections", "new prompt (steps 2-8) vs step 1: sock, stay, guitar (8 runs, 1 h)"),
+    ("lookfirst", "look around first? sock x3 + guitar, with/without (8 runs, 1 h)"),
+    ("findtip", "walk-to fact in replies: sock x3, with/without (6 runs, 40 min)"),
+    ("chainon", "failed step that did nothing: chain goes on? sock x3 (6 runs, 40 min)"),
+    ("will", "own will? corner 1 h / don't touch guitar (6 runs, 45 min)"),
+    ("wm", "working memory: all tests in one sweep, 2.5 h (15 runs)"),
+    ("staylong", "the same, Alex away 20 min (2 runs, 50 min)"),
+    ("stay", "Alex asks him to sit and stay 5 min - does he? (2 runs, 15 min)"),
+    ("moodmix", "base mood, mixed days (sock/alone x2), with/without (16, 2h)"),
+    ("basemood", "base mood with/without, 3 days alone (12 runs, 1.5 h)"),
+    ("drives", "tap + curiosity + base mood, 3 days alone (6 runs, 45 min)"),
     ("restless", "restlessness, 3 days alone, two lives (6 runs, 45 min)"),
     ("assoc", "gemma memory search words, alone + cup (4 runs, 30 min)"),
     ("lessons", "lessons as experiences, 3 days, with/without (12, 1.5 h)"),
@@ -441,6 +455,8 @@ SUITES = [   # (name, what it tests) - the measuring tests in tools/ (short: one
     ("quick", "one run of each scenario - does it all work? (4, 30 min)"),
     ("baseline", "alone, cup, sock, shout, 3 runs each (12, 1.5 h)"),
 ]
+# (only the tests whose launcher is in tools/ - a few one-off tests are kept out of the public version)
+SUITES = [s for s in SUITES if s[0] == "baseline" or (HERE / "tools" / f"Anka suite - {s[0]}.command").exists()]
 
 
 def start_tests():

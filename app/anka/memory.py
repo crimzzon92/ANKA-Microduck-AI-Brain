@@ -43,6 +43,7 @@ goals = []          # Anka's own goals: {"text", "since", "t"}
 cleanup_log = []    # everything the tidy-up changed, so it can be undone: {"date", "what", "before", "after"}
 diary = []          # things Anka itself did and experienced: {"date", "time", "text"}
 seen = []           # kinds of things Anka has ever seen
+base_mood = {}      # 2026-11-18 (BASE_MOOD): {"happiness": slow average over days, "days": n}
 familiarity = {}    # 2026-11-18: thing or person -> {"first": date, "days": [dates seen, newest last], "times": separate sightings}
 conversations = []  # all conversations: {"date", "time", "human", "duck"}
 self_image = []     # who Anka has become
@@ -129,6 +130,9 @@ def load_memory():
     seen[:] = data.get("seen", [])
     familiarity.clear()
     familiarity.update(data.get("familiarity", {}))
+    base_mood.clear()
+    base_mood.update(data.get("base_mood", {}))
+    apply_base_mood()
     # (things and people he knew before familiarity was kept: start from what the diary and the talks say - 2026-11-18)
     for d in data.get("diary", []):
         m = re.match(r"I saw an? (.+) for the first time", d.get("text", ""))
@@ -166,6 +170,26 @@ memory_changed = threading.Event()
 vectors_changed = threading.Event()
 
 
+def apply_base_mood():
+    """BASE MOOD (2026-11-18): his happiness drifts back towards a resting level that follows his base mood a little."""
+    from settings import BASE_MOOD, BASE_MOOD_PULL, RESTING
+    if not BASE_MOOD or "happiness" not in base_mood:
+        return
+    rest, speed = RESTING["happiness"]
+    RESTING["happiness"] = (round(min(0.7, max(0.3, 0.5 + BASE_MOOD_PULL * (base_mood["happiness"] - 0.5))), 3), speed)
+
+
+def night_base_mood(day_average):
+    """Each night the day's average happiness moves the base mood a little (BASE_MOOD_NIGHT)."""
+    from settings import BASE_MOOD_NIGHT
+    old = base_mood.get("happiness", 0.5)
+    base_mood["happiness"] = round(old + BASE_MOOD_NIGHT * (day_average - old), 3)
+    base_mood["days"] = base_mood.get("days", 0) + 1
+    apply_base_mood()
+    save_memory()
+    return old, base_mood["happiness"]
+
+
 def save_memory():
     """Marks the memory as changed. It is written to disk in the background (see save_now)."""
     memory_changed.set()
@@ -181,7 +205,7 @@ def save_now():
                 palace.setdefault(room_of.get(f, "unsorted"), []).append(f)
             text = json.dumps({
                 "self": self_image, "lessons": lessons, "ideas": ideas, "own_said": own_said, "places": places, "facts": palace, "old_facts": old_facts, "diary": diary,
-                "seen": seen, "familiarity": familiarity, "conversations": conversations, "last_dream": S.last_dream,
+                "seen": seen, "familiarity": familiarity, "base_mood": base_mood, "conversations": conversations, "last_dream": S.last_dream,
                 "feelings": {k: round(v, 2) for k, v in feelings.items()}, "goals": goals,
                 "cleanup_log": cleanup_log[-300:],
                 "fact_dates": {k: v for k, v in learned_on.items() if k in facts}},
@@ -1046,6 +1070,15 @@ def how_long(seconds):
     return "less than a minute" if seconds < 45 else "about a minute" if minutes <= 1 else \
         f"about {minutes} minutes" if minutes < 60 else f"about {round(seconds / 3600)} hours"
 
+
+
+def days_ago(day):
+    """'2026-11-18' -> '2 days ago' (or 'today' / 'yesterday'); anything else is returned as it is. (LOOK_FIRST)"""
+    try:
+        n = (date.today() - date.fromisoformat(str(day))).days
+    except Exception:
+        return str(day)
+    return "today" if n <= 0 else "yesterday" if n == 1 else f"{n} days ago"
 
 def ago(seconds):
     if seconds < 60:

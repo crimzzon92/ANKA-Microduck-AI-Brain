@@ -498,6 +498,26 @@ def _sleep_and_dream():
         pass
     pass  # (shared values live on S)
     print(f"\n😴 {NAME} is going to sleep...")
+    try:                                  # (WORKING MEMORY, 2026-11-19: what is still open goes into the diary)
+        from settings import WORKING_MEMORY
+        if WORKING_MEMORY:
+            from anka.working_memory import night_flush
+            for line in night_flush():
+                write_diary(line)
+                print(f"🧷 ({line})")
+    except Exception as error:
+        print(f"🧷 (working memory not emptied: {error})")
+    try:                                  # (BASE MOOD, 2026-11-18: the day's average happiness moves it a little)
+        from settings import BASE_MOOD
+        from anka.shared import state as _st
+        if BASE_MOOD and _st.get("mood_min", 0) > 1:     # (was > 5 min: the 5-minute test days were skipped - 11-19)
+            from anka.memory import night_base_mood
+            avg = _st["mood_sum"] / _st["mood_min"]
+            old, new = night_base_mood(avg)
+            print(f"🌗 (base mood: today's happiness averaged {avg:.2f} -> base mood {old:.2f} → {new:.2f})")
+            _st["mood_sum"], _st["mood_min"] = 0.0, 0.0
+    except Exception as error:
+        print(f"🌗 (base mood not updated: {error})")
     while not to_remember.empty():  # conversations not yet saved in the long-term memory
         remember(*to_remember.get())
     with feelings_lock:
